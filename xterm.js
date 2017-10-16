@@ -683,6 +683,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var EscapeSequences_1 = require("./EscapeSequences");
 var Charsets_1 = require("./Charsets");
 var Buffer_1 = require("./Buffer");
+var Types_1 = require("./renderer/Types");
 var InputHandler = (function () {
     function InputHandler(_terminal) {
         this._terminal = _terminal;
@@ -1317,34 +1318,38 @@ var InputHandler = (function () {
                 bg = this._terminal.defAttr & 0x1ff;
             }
             else if (p === 1) {
-                flags |= 1;
+                flags |= Types_1.FLAGS.BOLD;
             }
             else if (p === 4) {
-                flags |= 2;
+                flags |= Types_1.FLAGS.UNDERLINE;
             }
             else if (p === 5) {
-                flags |= 4;
+                flags |= Types_1.FLAGS.BLINK;
             }
             else if (p === 7) {
-                flags |= 8;
+                flags |= Types_1.FLAGS.INVERSE;
             }
             else if (p === 8) {
-                flags |= 16;
+                flags |= Types_1.FLAGS.INVISIBLE;
+            }
+            else if (p === 2) {
+                flags |= Types_1.FLAGS.DIM;
             }
             else if (p === 22) {
-                flags &= ~1;
+                flags &= ~Types_1.FLAGS.BOLD;
+                flags &= ~Types_1.FLAGS.DIM;
             }
             else if (p === 24) {
-                flags &= ~2;
+                flags &= ~Types_1.FLAGS.UNDERLINE;
             }
             else if (p === 25) {
-                flags &= ~4;
+                flags &= ~Types_1.FLAGS.BLINK;
             }
             else if (p === 27) {
-                flags &= ~8;
+                flags &= ~Types_1.FLAGS.INVERSE;
             }
             else if (p === 28) {
-                flags &= ~16;
+                flags &= ~Types_1.FLAGS.INVISIBLE;
             }
             else if (p === 39) {
                 fg = (this._terminal.defAttr >> 9) & 0x1ff;
@@ -1616,7 +1621,7 @@ exports.wcwidth = (function (opts) {
 
 
 
-},{"./Buffer":1,"./Charsets":3,"./EscapeSequences":5}],8:[function(require,module,exports){
+},{"./Buffer":1,"./Charsets":3,"./EscapeSequences":5,"./renderer/Types":26}],8:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -2800,6 +2805,9 @@ var SelectionModel = (function () {
     SelectionModel.prototype.areSelectionValuesReversed = function () {
         var start = this.selectionStart;
         var end = this.selectionEnd;
+        if (!start || !end) {
+            return false;
+        }
         return start[1] > end[1] || (start[1] === end[1] && start[0] > end[0]);
     };
     SelectionModel.prototype.onTrim = function (amount) {
@@ -2869,6 +2877,7 @@ var DEFAULT_OPTIONS = {
     fontFamily: 'courier-new, courier, monospace',
     fontSize: 15,
     lineHeight: 1.0,
+    letterSpacing: 0,
     scrollback: 1000,
     screenKeys: false,
     debug: false,
@@ -3027,6 +3036,7 @@ var Terminal = (function (_super) {
                 this.renderer.clear();
                 this.charMeasure.measure(this.options);
                 break;
+            case 'letterSpacing':
             case 'lineHeight':
                 this.renderer.clear();
                 this.renderer.onResize(this.cols, this.rows, false);
@@ -4323,7 +4333,7 @@ var Viewport = (function () {
     };
     Viewport.prototype.refresh = function () {
         if (this.charMeasure.height > 0) {
-            this.currentRowHeight = this.terminal.renderer.dimensions.scaledLineHeight / window.devicePixelRatio;
+            this.currentRowHeight = this.terminal.renderer.dimensions.scaledCellHeight / window.devicePixelRatio;
             if (this.lastRecordedViewportHeight !== this.terminal.renderer.dimensions.canvasHeight) {
                 this.lastRecordedViewportHeight = this.terminal.renderer.dimensions.canvasHeight;
                 this.viewportElement.style.height = this.lastRecordedViewportHeight + 'px';
@@ -4344,7 +4354,7 @@ var Viewport = (function () {
             this.refresh();
         }
         else {
-            if (this.terminal.renderer.dimensions.scaledLineHeight / window.devicePixelRatio !== this.currentRowHeight) {
+            if (this.terminal.renderer.dimensions.scaledCellHeight / window.devicePixelRatio !== this.currentRowHeight) {
                 this.refresh();
             }
         }
@@ -4612,6 +4622,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var CharAtlas_1 = require("./CharAtlas");
 var Buffer_1 = require("../Buffer");
 exports.INVERTED_DEFAULT_COLOR = -1;
+var DIM_OPACITY = 0.5;
 var BaseRenderLayer = (function () {
     function BaseRenderLayer(container, id, zIndex, _alpha, _colors) {
         this._alpha = _alpha;
@@ -4650,10 +4661,12 @@ var BaseRenderLayer = (function () {
         }
     };
     BaseRenderLayer.prototype.resize = function (terminal, dim, charSizeChanged) {
+        this._scaledCellWidth = dim.scaledCellWidth;
+        this._scaledCellHeight = dim.scaledCellHeight;
         this._scaledCharWidth = dim.scaledCharWidth;
         this._scaledCharHeight = dim.scaledCharHeight;
-        this._scaledLineHeight = dim.scaledLineHeight;
-        this._scaledLineDrawY = dim.scaledLineDrawY;
+        this._scaledCharLeft = dim.scaledCharLeft;
+        this._scaledCharTop = dim.scaledCharTop;
         this._canvas.width = dim.scaledCanvasWidth;
         this._canvas.height = dim.scaledCanvasHeight;
         this._canvas.style.width = dim.canvasWidth + "px";
@@ -4666,18 +4679,18 @@ var BaseRenderLayer = (function () {
         }
     };
     BaseRenderLayer.prototype.fillCells = function (x, y, width, height) {
-        this._ctx.fillRect(x * this._scaledCharWidth, y * this._scaledLineHeight, width * this._scaledCharWidth, height * this._scaledLineHeight);
+        this._ctx.fillRect(x * this._scaledCellWidth, y * this._scaledCellHeight, width * this._scaledCellWidth, height * this._scaledCellHeight);
     };
     BaseRenderLayer.prototype.fillBottomLineAtCells = function (x, y, width) {
         if (width === void 0) { width = 1; }
-        this._ctx.fillRect(x * this._scaledCharWidth, (y + 1) * this._scaledLineHeight - window.devicePixelRatio - 1, width * this._scaledCharWidth, window.devicePixelRatio);
+        this._ctx.fillRect(x * this._scaledCellWidth, (y + 1) * this._scaledCellHeight - window.devicePixelRatio - 1, width * this._scaledCellWidth, window.devicePixelRatio);
     };
     BaseRenderLayer.prototype.fillLeftLineAtCell = function (x, y) {
-        this._ctx.fillRect(x * this._scaledCharWidth, y * this._scaledLineHeight, window.devicePixelRatio, this._scaledLineHeight);
+        this._ctx.fillRect(x * this._scaledCellWidth, y * this._scaledCellHeight, window.devicePixelRatio, this._scaledCellHeight);
     };
     BaseRenderLayer.prototype.strokeRectAtCell = function (x, y, width, height) {
         this._ctx.lineWidth = window.devicePixelRatio;
-        this._ctx.strokeRect(x * this._scaledCharWidth + window.devicePixelRatio / 2, y * this._scaledLineHeight + (window.devicePixelRatio / 2), width * this._scaledCharWidth - window.devicePixelRatio, (height * this._scaledLineHeight) - window.devicePixelRatio);
+        this._ctx.strokeRect(x * this._scaledCellWidth + window.devicePixelRatio / 2, y * this._scaledCellHeight + (window.devicePixelRatio / 2), width * this._scaledCellWidth - window.devicePixelRatio, (height * this._scaledCellHeight) - window.devicePixelRatio);
     };
     BaseRenderLayer.prototype.clearAll = function () {
         if (this._alpha) {
@@ -4690,22 +4703,20 @@ var BaseRenderLayer = (function () {
     };
     BaseRenderLayer.prototype.clearCells = function (x, y, width, height) {
         if (this._alpha) {
-            this._ctx.clearRect(x * this._scaledCharWidth, y * this._scaledLineHeight, width * this._scaledCharWidth, height * this._scaledLineHeight);
+            this._ctx.clearRect(x * this._scaledCellWidth, y * this._scaledCellHeight, width * this._scaledCellWidth, height * this._scaledCellHeight);
         }
         else {
             this._ctx.fillStyle = this._colors.background;
-            this._ctx.fillRect(x * this._scaledCharWidth, y * this._scaledLineHeight, width * this._scaledCharWidth, height * this._scaledLineHeight);
+            this._ctx.fillRect(x * this._scaledCellWidth, y * this._scaledCellHeight, width * this._scaledCellWidth, height * this._scaledCellHeight);
         }
     };
     BaseRenderLayer.prototype.fillCharTrueColor = function (terminal, charData, x, y) {
         this._ctx.font = terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
         this._ctx.textBaseline = 'top';
-        this._ctx.beginPath();
-        this._ctx.rect(x * this._scaledCharWidth, y * this._scaledLineHeight + this._scaledLineDrawY, charData[Buffer_1.CHAR_DATA_WIDTH_INDEX] * this._scaledCharWidth, this._scaledCharHeight);
-        this._ctx.clip();
-        this._ctx.fillText(charData[Buffer_1.CHAR_DATA_CHAR_INDEX], x * this._scaledCharWidth, y * this._scaledCharHeight);
+        this._clipRow(terminal, y);
+        this._ctx.fillText(charData[Buffer_1.CHAR_DATA_CHAR_INDEX], x * this._scaledCellWidth + this._scaledCharLeft, y * this._scaledCellHeight + this._scaledCharTop);
     };
-    BaseRenderLayer.prototype.drawChar = function (terminal, char, code, width, x, y, fg, bg, bold) {
+    BaseRenderLayer.prototype.drawChar = function (terminal, char, code, width, x, y, fg, bg, bold, dim) {
         var colorIndex = 0;
         if (fg < 256) {
             colorIndex = fg + 2;
@@ -4716,19 +4727,22 @@ var BaseRenderLayer = (function () {
             }
         }
         var isAscii = code < 256;
-        var isBasicColor = (colorIndex > 1 && fg < 16);
+        var isBasicColor = (colorIndex > 1 && fg < 16) && (fg < 8 || bold);
         var isDefaultColor = fg >= 256;
         var isDefaultBackground = bg >= 256;
         if (this._charAtlas && isAscii && (isBasicColor || isDefaultColor) && isDefaultBackground) {
             var charAtlasCellWidth = this._scaledCharWidth + CharAtlas_1.CHAR_ATLAS_CELL_SPACING;
             var charAtlasCellHeight = this._scaledCharHeight + CharAtlas_1.CHAR_ATLAS_CELL_SPACING;
-            this._ctx.drawImage(this._charAtlas, code * charAtlasCellWidth, colorIndex * charAtlasCellHeight, charAtlasCellWidth, this._scaledCharHeight, x * this._scaledCharWidth, y * this._scaledLineHeight + this._scaledLineDrawY, this._scaledCharWidth, this._scaledCharHeight);
+            if (dim) {
+                this._ctx.globalAlpha = DIM_OPACITY;
+            }
+            this._ctx.drawImage(this._charAtlas, code * charAtlasCellWidth, colorIndex * charAtlasCellHeight, charAtlasCellWidth, this._scaledCharHeight, x * this._scaledCellWidth + this._scaledCharLeft, y * this._scaledCellHeight + this._scaledCharTop, charAtlasCellWidth, this._scaledCharHeight);
         }
         else {
-            this._drawUncachedChar(terminal, char, width, fg, x, y, bold);
+            this._drawUncachedChar(terminal, char, width, fg, x, y, bold, dim);
         }
     };
-    BaseRenderLayer.prototype._drawUncachedChar = function (terminal, char, width, fg, x, y, bold) {
+    BaseRenderLayer.prototype._drawUncachedChar = function (terminal, char, width, fg, x, y, bold, dim) {
         this._ctx.save();
         this._ctx.font = terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
         if (bold) {
@@ -4744,11 +4758,17 @@ var BaseRenderLayer = (function () {
         else {
             this._ctx.fillStyle = this._colors.foreground;
         }
-        this._ctx.beginPath();
-        this._ctx.rect(0, y * this._scaledLineHeight + this._scaledLineDrawY, terminal.cols * this._scaledCharWidth, this._scaledCharHeight);
-        this._ctx.clip();
-        this._ctx.fillText(char, x * this._scaledCharWidth, y * this._scaledLineHeight + this._scaledLineDrawY);
+        this._clipRow(terminal, y);
+        if (dim) {
+            this._ctx.globalAlpha = DIM_OPACITY;
+        }
+        this._ctx.fillText(char, x * this._scaledCellWidth + this._scaledCharLeft, y * this._scaledCellHeight + this._scaledCharTop);
         this._ctx.restore();
+    };
+    BaseRenderLayer.prototype._clipRow = function (terminal, y) {
+        this._ctx.beginPath();
+        this._ctx.rect(0, y * this._scaledCellHeight, terminal.cols * this._scaledCellWidth, this._scaledCellHeight);
+        this._ctx.clip();
     };
     return BaseRenderLayer;
 }());
@@ -5424,8 +5444,10 @@ var Renderer = (function (_super) {
         _this.dimensions = {
             scaledCharWidth: null,
             scaledCharHeight: null,
-            scaledLineHeight: null,
-            scaledLineDrawY: null,
+            scaledCellWidth: null,
+            scaledCellHeight: null,
+            scaledCharLeft: null,
+            scaledCharTop: null,
             scaledCanvasWidth: null,
             scaledCanvasHeight: null,
             canvasWidth: null,
@@ -5459,10 +5481,12 @@ var Renderer = (function (_super) {
         }
         this.dimensions.scaledCharWidth = Math.floor(this._terminal.charMeasure.width * window.devicePixelRatio);
         this.dimensions.scaledCharHeight = Math.ceil(this._terminal.charMeasure.height * window.devicePixelRatio);
-        this.dimensions.scaledLineHeight = Math.floor(this.dimensions.scaledCharHeight * this._terminal.options.lineHeight);
-        this.dimensions.scaledLineDrawY = this._terminal.options.lineHeight === 1 ? 0 : Math.round((this.dimensions.scaledLineHeight - this.dimensions.scaledCharHeight) / 2);
-        this.dimensions.scaledCanvasHeight = this._terminal.rows * this.dimensions.scaledLineHeight;
-        this.dimensions.scaledCanvasWidth = this._terminal.cols * this.dimensions.scaledCharWidth;
+        this.dimensions.scaledCellHeight = Math.floor(this.dimensions.scaledCharHeight * this._terminal.options.lineHeight);
+        this.dimensions.scaledCharTop = this._terminal.options.lineHeight === 1 ? 0 : Math.round((this.dimensions.scaledCellHeight - this.dimensions.scaledCharHeight) / 2);
+        this.dimensions.scaledCellWidth = this.dimensions.scaledCharWidth + Math.round(this._terminal.options.letterSpacing);
+        this.dimensions.scaledCharLeft = Math.floor(this._terminal.options.letterSpacing / 2);
+        this.dimensions.scaledCanvasHeight = this._terminal.rows * this.dimensions.scaledCellHeight;
+        this.dimensions.scaledCanvasWidth = this._terminal.cols * this.dimensions.scaledCellWidth;
         this.dimensions.canvasHeight = Math.round(this.dimensions.scaledCanvasHeight / window.devicePixelRatio);
         this.dimensions.canvasWidth = Math.round(this.dimensions.scaledCanvasWidth / window.devicePixelRatio);
         this.dimensions.actualCellHeight = this.dimensions.canvasHeight / this._terminal.rows;
@@ -5732,7 +5756,7 @@ var TextRenderLayer = (function (_super) {
                     }
                     this.fillBottomLineAtCells(x, y);
                 }
-                this.drawChar(terminal, char, code, width, x, y, fg, bg, !!(flags & Types_1.FLAGS.BOLD));
+                this.drawChar(terminal, char, code, width, x, y, fg, bg, !!(flags & Types_1.FLAGS.BOLD), !!(flags & Types_1.FLAGS.DIM));
                 this._ctx.restore();
             }
         }
@@ -5780,6 +5804,7 @@ var FLAGS;
     FLAGS[FLAGS["BLINK"] = 4] = "BLINK";
     FLAGS[FLAGS["INVERSE"] = 8] = "INVERSE";
     FLAGS[FLAGS["INVISIBLE"] = 16] = "INVISIBLE";
+    FLAGS[FLAGS["DIM"] = 32] = "DIM";
 })(FLAGS = exports.FLAGS || (exports.FLAGS = {}));
 ;
 
