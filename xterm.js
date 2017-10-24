@@ -2874,6 +2874,7 @@ var DEFAULT_OPTIONS = {
     cursorStyle: 'block',
     bellSound: Sounds_1.BellSound,
     bellStyle: 'none',
+    enableBold: true,
     fontFamily: 'courier-new, courier, monospace',
     fontSize: 15,
     lineHeight: 1.0,
@@ -3036,6 +3037,7 @@ var Terminal = (function (_super) {
                 this.renderer.clear();
                 this.charMeasure.measure(this.options);
                 break;
+            case 'enableBold':
             case 'letterSpacing':
             case 'lineHeight':
                 this.renderer.clear();
@@ -4722,7 +4724,7 @@ var BaseRenderLayer = (function () {
             colorIndex = fg + 2;
         }
         else {
-            if (bold) {
+            if (bold && terminal.options.enableBold) {
                 colorIndex = 1;
             }
         }
@@ -4736,6 +4738,11 @@ var BaseRenderLayer = (function () {
             if (dim) {
                 this._ctx.globalAlpha = DIM_OPACITY;
             }
+            if (bold && !terminal.options.enableBold) {
+                if (colorIndex > 1) {
+                    colorIndex -= 8;
+                }
+            }
             this._ctx.drawImage(this._charAtlas, code * charAtlasCellWidth, colorIndex * charAtlasCellHeight, charAtlasCellWidth, this._scaledCharHeight, x * this._scaledCellWidth + this._scaledCharLeft, y * this._scaledCellHeight + this._scaledCharTop, charAtlasCellWidth, this._scaledCharHeight);
         }
         else {
@@ -4745,7 +4752,7 @@ var BaseRenderLayer = (function () {
     BaseRenderLayer.prototype._drawUncachedChar = function (terminal, char, width, fg, x, y, bold, dim) {
         this._ctx.save();
         this._ctx.font = terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
-        if (bold) {
+        if (bold && terminal.options.enableBold) {
             this._ctx.font = "bold " + this._ctx.font;
         }
         this._ctx.textBaseline = 'top';
