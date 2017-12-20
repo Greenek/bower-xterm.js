@@ -6,6 +6,7 @@ exports.CHAR_DATA_ATTR_INDEX = 0;
 exports.CHAR_DATA_CHAR_INDEX = 1;
 exports.CHAR_DATA_WIDTH_INDEX = 2;
 exports.CHAR_DATA_CODE_INDEX = 3;
+exports.MAX_BUFFER_SIZE = 4294967295;
 var Buffer = (function () {
     function Buffer(_terminal, _hasScrollback) {
         this._terminal = _terminal;
@@ -39,7 +40,8 @@ var Buffer = (function () {
         if (!this._hasScrollback) {
             return rows;
         }
-        return rows + this._terminal.options.scrollback;
+        var correctBufferLength = rows + this._terminal.options.scrollback;
+        return correctBufferLength > exports.MAX_BUFFER_SIZE ? exports.MAX_BUFFER_SIZE : correctBufferLength;
     };
     Buffer.prototype.fillViewportRows = function () {
         if (this._lines.length === 0) {
@@ -208,7 +210,7 @@ exports.Buffer = Buffer;
 
 
 
-},{"./utils/CircularList":29}],2:[function(require,module,exports){
+},{"./utils/CircularList":30}],2:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -280,7 +282,147 @@ exports.BufferSet = BufferSet;
 
 
 
-},{"./Buffer":1,"./EventEmitter":6}],3:[function(require,module,exports){
+},{"./Buffer":1,"./EventEmitter":7}],3:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.wcwidth = (function (opts) {
+    var COMBINING_BMP = [
+        [0x0300, 0x036F], [0x0483, 0x0486], [0x0488, 0x0489],
+        [0x0591, 0x05BD], [0x05BF, 0x05BF], [0x05C1, 0x05C2],
+        [0x05C4, 0x05C5], [0x05C7, 0x05C7], [0x0600, 0x0603],
+        [0x0610, 0x0615], [0x064B, 0x065E], [0x0670, 0x0670],
+        [0x06D6, 0x06E4], [0x06E7, 0x06E8], [0x06EA, 0x06ED],
+        [0x070F, 0x070F], [0x0711, 0x0711], [0x0730, 0x074A],
+        [0x07A6, 0x07B0], [0x07EB, 0x07F3], [0x0901, 0x0902],
+        [0x093C, 0x093C], [0x0941, 0x0948], [0x094D, 0x094D],
+        [0x0951, 0x0954], [0x0962, 0x0963], [0x0981, 0x0981],
+        [0x09BC, 0x09BC], [0x09C1, 0x09C4], [0x09CD, 0x09CD],
+        [0x09E2, 0x09E3], [0x0A01, 0x0A02], [0x0A3C, 0x0A3C],
+        [0x0A41, 0x0A42], [0x0A47, 0x0A48], [0x0A4B, 0x0A4D],
+        [0x0A70, 0x0A71], [0x0A81, 0x0A82], [0x0ABC, 0x0ABC],
+        [0x0AC1, 0x0AC5], [0x0AC7, 0x0AC8], [0x0ACD, 0x0ACD],
+        [0x0AE2, 0x0AE3], [0x0B01, 0x0B01], [0x0B3C, 0x0B3C],
+        [0x0B3F, 0x0B3F], [0x0B41, 0x0B43], [0x0B4D, 0x0B4D],
+        [0x0B56, 0x0B56], [0x0B82, 0x0B82], [0x0BC0, 0x0BC0],
+        [0x0BCD, 0x0BCD], [0x0C3E, 0x0C40], [0x0C46, 0x0C48],
+        [0x0C4A, 0x0C4D], [0x0C55, 0x0C56], [0x0CBC, 0x0CBC],
+        [0x0CBF, 0x0CBF], [0x0CC6, 0x0CC6], [0x0CCC, 0x0CCD],
+        [0x0CE2, 0x0CE3], [0x0D41, 0x0D43], [0x0D4D, 0x0D4D],
+        [0x0DCA, 0x0DCA], [0x0DD2, 0x0DD4], [0x0DD6, 0x0DD6],
+        [0x0E31, 0x0E31], [0x0E34, 0x0E3A], [0x0E47, 0x0E4E],
+        [0x0EB1, 0x0EB1], [0x0EB4, 0x0EB9], [0x0EBB, 0x0EBC],
+        [0x0EC8, 0x0ECD], [0x0F18, 0x0F19], [0x0F35, 0x0F35],
+        [0x0F37, 0x0F37], [0x0F39, 0x0F39], [0x0F71, 0x0F7E],
+        [0x0F80, 0x0F84], [0x0F86, 0x0F87], [0x0F90, 0x0F97],
+        [0x0F99, 0x0FBC], [0x0FC6, 0x0FC6], [0x102D, 0x1030],
+        [0x1032, 0x1032], [0x1036, 0x1037], [0x1039, 0x1039],
+        [0x1058, 0x1059], [0x1160, 0x11FF], [0x135F, 0x135F],
+        [0x1712, 0x1714], [0x1732, 0x1734], [0x1752, 0x1753],
+        [0x1772, 0x1773], [0x17B4, 0x17B5], [0x17B7, 0x17BD],
+        [0x17C6, 0x17C6], [0x17C9, 0x17D3], [0x17DD, 0x17DD],
+        [0x180B, 0x180D], [0x18A9, 0x18A9], [0x1920, 0x1922],
+        [0x1927, 0x1928], [0x1932, 0x1932], [0x1939, 0x193B],
+        [0x1A17, 0x1A18], [0x1B00, 0x1B03], [0x1B34, 0x1B34],
+        [0x1B36, 0x1B3A], [0x1B3C, 0x1B3C], [0x1B42, 0x1B42],
+        [0x1B6B, 0x1B73], [0x1DC0, 0x1DCA], [0x1DFE, 0x1DFF],
+        [0x200B, 0x200F], [0x202A, 0x202E], [0x2060, 0x2063],
+        [0x206A, 0x206F], [0x20D0, 0x20EF], [0x302A, 0x302F],
+        [0x3099, 0x309A], [0xA806, 0xA806], [0xA80B, 0xA80B],
+        [0xA825, 0xA826], [0xFB1E, 0xFB1E], [0xFE00, 0xFE0F],
+        [0xFE20, 0xFE23], [0xFEFF, 0xFEFF], [0xFFF9, 0xFFFB],
+    ];
+    var COMBINING_HIGH = [
+        [0x10A01, 0x10A03], [0x10A05, 0x10A06], [0x10A0C, 0x10A0F],
+        [0x10A38, 0x10A3A], [0x10A3F, 0x10A3F], [0x1D167, 0x1D169],
+        [0x1D173, 0x1D182], [0x1D185, 0x1D18B], [0x1D1AA, 0x1D1AD],
+        [0x1D242, 0x1D244], [0xE0001, 0xE0001], [0xE0020, 0xE007F],
+        [0xE0100, 0xE01EF]
+    ];
+    function bisearch(ucs, data) {
+        var min = 0;
+        var max = data.length - 1;
+        var mid;
+        if (ucs < data[0][0] || ucs > data[max][1])
+            return false;
+        while (max >= min) {
+            mid = (min + max) >> 1;
+            if (ucs > data[mid][1])
+                min = mid + 1;
+            else if (ucs < data[mid][0])
+                max = mid - 1;
+            else
+                return true;
+        }
+        return false;
+    }
+    function wcwidthBMP(ucs) {
+        if (ucs === 0)
+            return opts.nul;
+        if (ucs < 32 || (ucs >= 0x7f && ucs < 0xa0))
+            return opts.control;
+        if (bisearch(ucs, COMBINING_BMP))
+            return 0;
+        if (isWideBMP(ucs)) {
+            return 2;
+        }
+        return 1;
+    }
+    function isWideBMP(ucs) {
+        return (ucs >= 0x1100 && (ucs <= 0x115f ||
+            ucs === 0x2329 ||
+            ucs === 0x232a ||
+            (ucs >= 0x2e80 && ucs <= 0xa4cf && ucs !== 0x303f) ||
+            (ucs >= 0xac00 && ucs <= 0xd7a3) ||
+            (ucs >= 0xf900 && ucs <= 0xfaff) ||
+            (ucs >= 0xfe10 && ucs <= 0xfe19) ||
+            (ucs >= 0xfe30 && ucs <= 0xfe6f) ||
+            (ucs >= 0xff00 && ucs <= 0xff60) ||
+            (ucs >= 0xffe0 && ucs <= 0xffe6)));
+    }
+    function wcwidthHigh(ucs) {
+        if (bisearch(ucs, COMBINING_HIGH))
+            return 0;
+        if ((ucs >= 0x20000 && ucs <= 0x2fffd) || (ucs >= 0x30000 && ucs <= 0x3fffd)) {
+            return 2;
+        }
+        return 1;
+    }
+    var control = opts.control | 0;
+    var table = null;
+    function init_table() {
+        var CODEPOINTS = 65536;
+        var BITWIDTH = 2;
+        var ITEMSIZE = 32;
+        var CONTAINERSIZE = CODEPOINTS * BITWIDTH / ITEMSIZE;
+        var CODEPOINTS_PER_ITEM = ITEMSIZE / BITWIDTH;
+        table = (typeof Uint32Array === 'undefined')
+            ? new Array(CONTAINERSIZE)
+            : new Uint32Array(CONTAINERSIZE);
+        for (var i = 0; i < CONTAINERSIZE; ++i) {
+            var num = 0;
+            var pos = CODEPOINTS_PER_ITEM;
+            while (pos--)
+                num = (num << 2) | wcwidthBMP(CODEPOINTS_PER_ITEM * i + pos);
+            table[i] = num;
+        }
+        return table;
+    }
+    return function (num) {
+        num = num | 0;
+        if (num < 32)
+            return control | 0;
+        if (num < 127)
+            return 1;
+        var t = table || init_table();
+        if (num < 65536)
+            return t[num >> 4] >> ((num & 15) << 1) & 3;
+        return wcwidthHigh(num);
+    };
+})({ nul: 0, control: 0 });
+
+
+
+},{}],4:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CHARSETS = {};
@@ -443,7 +585,7 @@ exports.CHARSETS['='] = {
 
 
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var CompositionHelper = (function () {
@@ -570,7 +712,7 @@ exports.CompositionHelper = CompositionHelper;
 
 
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var C0;
@@ -614,7 +756,7 @@ var C0;
 
 
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var EventEmitter = (function () {
@@ -677,20 +819,21 @@ exports.EventEmitter = EventEmitter;
 
 
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var EscapeSequences_1 = require("./EscapeSequences");
 var Charsets_1 = require("./Charsets");
 var Buffer_1 = require("./Buffer");
 var Types_1 = require("./renderer/Types");
+var CharWidth_1 = require("./CharWidth");
 var InputHandler = (function () {
     function InputHandler(_terminal) {
         this._terminal = _terminal;
     }
     InputHandler.prototype.addChar = function (char, code) {
         if (char >= ' ') {
-            var ch_width = exports.wcwidth(code);
+            var ch_width = CharWidth_1.wcwidth(code);
             if (this._terminal.charset && this._terminal.charset[char]) {
                 char = this._terminal.charset[char];
             }
@@ -988,6 +1131,7 @@ var InputHandler = (function () {
             this._terminal.buffer.lines.get(row).splice(this._terminal.buffer.x, 1);
             this._terminal.buffer.lines.get(row).push(ch);
         }
+        this._terminal.updateRange(this._terminal.buffer.y);
     };
     InputHandler.prototype.scrollUp = function (params) {
         var param = params[0] || 1;
@@ -1205,6 +1349,9 @@ var InputHandler = (function () {
                     this._terminal.viewport.syncScrollArea();
                     this._terminal.showCursor();
                     break;
+                case 2004:
+                    this._terminal.bracketedPasteMode = true;
+                    break;
             }
         }
     };
@@ -1282,6 +1429,9 @@ var InputHandler = (function () {
                     this._terminal.refresh(0, this._terminal.rows - 1);
                     this._terminal.viewport.syncScrollArea();
                     this._terminal.showCursor();
+                    break;
+                case 2004:
+                    this._terminal.bracketedPasteMode = false;
                     break;
             }
         }
@@ -1484,144 +1634,10 @@ var InputHandler = (function () {
     return InputHandler;
 }());
 exports.InputHandler = InputHandler;
-exports.wcwidth = (function (opts) {
-    var COMBINING_BMP = [
-        [0x0300, 0x036F], [0x0483, 0x0486], [0x0488, 0x0489],
-        [0x0591, 0x05BD], [0x05BF, 0x05BF], [0x05C1, 0x05C2],
-        [0x05C4, 0x05C5], [0x05C7, 0x05C7], [0x0600, 0x0603],
-        [0x0610, 0x0615], [0x064B, 0x065E], [0x0670, 0x0670],
-        [0x06D6, 0x06E4], [0x06E7, 0x06E8], [0x06EA, 0x06ED],
-        [0x070F, 0x070F], [0x0711, 0x0711], [0x0730, 0x074A],
-        [0x07A6, 0x07B0], [0x07EB, 0x07F3], [0x0901, 0x0902],
-        [0x093C, 0x093C], [0x0941, 0x0948], [0x094D, 0x094D],
-        [0x0951, 0x0954], [0x0962, 0x0963], [0x0981, 0x0981],
-        [0x09BC, 0x09BC], [0x09C1, 0x09C4], [0x09CD, 0x09CD],
-        [0x09E2, 0x09E3], [0x0A01, 0x0A02], [0x0A3C, 0x0A3C],
-        [0x0A41, 0x0A42], [0x0A47, 0x0A48], [0x0A4B, 0x0A4D],
-        [0x0A70, 0x0A71], [0x0A81, 0x0A82], [0x0ABC, 0x0ABC],
-        [0x0AC1, 0x0AC5], [0x0AC7, 0x0AC8], [0x0ACD, 0x0ACD],
-        [0x0AE2, 0x0AE3], [0x0B01, 0x0B01], [0x0B3C, 0x0B3C],
-        [0x0B3F, 0x0B3F], [0x0B41, 0x0B43], [0x0B4D, 0x0B4D],
-        [0x0B56, 0x0B56], [0x0B82, 0x0B82], [0x0BC0, 0x0BC0],
-        [0x0BCD, 0x0BCD], [0x0C3E, 0x0C40], [0x0C46, 0x0C48],
-        [0x0C4A, 0x0C4D], [0x0C55, 0x0C56], [0x0CBC, 0x0CBC],
-        [0x0CBF, 0x0CBF], [0x0CC6, 0x0CC6], [0x0CCC, 0x0CCD],
-        [0x0CE2, 0x0CE3], [0x0D41, 0x0D43], [0x0D4D, 0x0D4D],
-        [0x0DCA, 0x0DCA], [0x0DD2, 0x0DD4], [0x0DD6, 0x0DD6],
-        [0x0E31, 0x0E31], [0x0E34, 0x0E3A], [0x0E47, 0x0E4E],
-        [0x0EB1, 0x0EB1], [0x0EB4, 0x0EB9], [0x0EBB, 0x0EBC],
-        [0x0EC8, 0x0ECD], [0x0F18, 0x0F19], [0x0F35, 0x0F35],
-        [0x0F37, 0x0F37], [0x0F39, 0x0F39], [0x0F71, 0x0F7E],
-        [0x0F80, 0x0F84], [0x0F86, 0x0F87], [0x0F90, 0x0F97],
-        [0x0F99, 0x0FBC], [0x0FC6, 0x0FC6], [0x102D, 0x1030],
-        [0x1032, 0x1032], [0x1036, 0x1037], [0x1039, 0x1039],
-        [0x1058, 0x1059], [0x1160, 0x11FF], [0x135F, 0x135F],
-        [0x1712, 0x1714], [0x1732, 0x1734], [0x1752, 0x1753],
-        [0x1772, 0x1773], [0x17B4, 0x17B5], [0x17B7, 0x17BD],
-        [0x17C6, 0x17C6], [0x17C9, 0x17D3], [0x17DD, 0x17DD],
-        [0x180B, 0x180D], [0x18A9, 0x18A9], [0x1920, 0x1922],
-        [0x1927, 0x1928], [0x1932, 0x1932], [0x1939, 0x193B],
-        [0x1A17, 0x1A18], [0x1B00, 0x1B03], [0x1B34, 0x1B34],
-        [0x1B36, 0x1B3A], [0x1B3C, 0x1B3C], [0x1B42, 0x1B42],
-        [0x1B6B, 0x1B73], [0x1DC0, 0x1DCA], [0x1DFE, 0x1DFF],
-        [0x200B, 0x200F], [0x202A, 0x202E], [0x2060, 0x2063],
-        [0x206A, 0x206F], [0x20D0, 0x20EF], [0x302A, 0x302F],
-        [0x3099, 0x309A], [0xA806, 0xA806], [0xA80B, 0xA80B],
-        [0xA825, 0xA826], [0xFB1E, 0xFB1E], [0xFE00, 0xFE0F],
-        [0xFE20, 0xFE23], [0xFEFF, 0xFEFF], [0xFFF9, 0xFFFB],
-    ];
-    var COMBINING_HIGH = [
-        [0x10A01, 0x10A03], [0x10A05, 0x10A06], [0x10A0C, 0x10A0F],
-        [0x10A38, 0x10A3A], [0x10A3F, 0x10A3F], [0x1D167, 0x1D169],
-        [0x1D173, 0x1D182], [0x1D185, 0x1D18B], [0x1D1AA, 0x1D1AD],
-        [0x1D242, 0x1D244], [0xE0001, 0xE0001], [0xE0020, 0xE007F],
-        [0xE0100, 0xE01EF]
-    ];
-    function bisearch(ucs, data) {
-        var min = 0;
-        var max = data.length - 1;
-        var mid;
-        if (ucs < data[0][0] || ucs > data[max][1])
-            return false;
-        while (max >= min) {
-            mid = (min + max) >> 1;
-            if (ucs > data[mid][1])
-                min = mid + 1;
-            else if (ucs < data[mid][0])
-                max = mid - 1;
-            else
-                return true;
-        }
-        return false;
-    }
-    function wcwidthBMP(ucs) {
-        if (ucs === 0)
-            return opts.nul;
-        if (ucs < 32 || (ucs >= 0x7f && ucs < 0xa0))
-            return opts.control;
-        if (bisearch(ucs, COMBINING_BMP))
-            return 0;
-        if (isWideBMP(ucs)) {
-            return 2;
-        }
-        return 1;
-    }
-    function isWideBMP(ucs) {
-        return (ucs >= 0x1100 && (ucs <= 0x115f ||
-            ucs === 0x2329 ||
-            ucs === 0x232a ||
-            (ucs >= 0x2e80 && ucs <= 0xa4cf && ucs !== 0x303f) ||
-            (ucs >= 0xac00 && ucs <= 0xd7a3) ||
-            (ucs >= 0xf900 && ucs <= 0xfaff) ||
-            (ucs >= 0xfe10 && ucs <= 0xfe19) ||
-            (ucs >= 0xfe30 && ucs <= 0xfe6f) ||
-            (ucs >= 0xff00 && ucs <= 0xff60) ||
-            (ucs >= 0xffe0 && ucs <= 0xffe6)));
-    }
-    function wcwidthHigh(ucs) {
-        if (bisearch(ucs, COMBINING_HIGH))
-            return 0;
-        if ((ucs >= 0x20000 && ucs <= 0x2fffd) || (ucs >= 0x30000 && ucs <= 0x3fffd)) {
-            return 2;
-        }
-        return 1;
-    }
-    var control = opts.control | 0;
-    var table = null;
-    function init_table() {
-        var CODEPOINTS = 65536;
-        var BITWIDTH = 2;
-        var ITEMSIZE = 32;
-        var CONTAINERSIZE = CODEPOINTS * BITWIDTH / ITEMSIZE;
-        var CODEPOINTS_PER_ITEM = ITEMSIZE / BITWIDTH;
-        table = (typeof Uint32Array === 'undefined')
-            ? new Array(CONTAINERSIZE)
-            : new Uint32Array(CONTAINERSIZE);
-        for (var i = 0; i < CONTAINERSIZE; ++i) {
-            var num = 0;
-            var pos = CODEPOINTS_PER_ITEM;
-            while (pos--)
-                num = (num << 2) | wcwidthBMP(CODEPOINTS_PER_ITEM * i + pos);
-            table[i] = num;
-        }
-        return table;
-    }
-    return function (num) {
-        num = num | 0;
-        if (num < 32)
-            return control | 0;
-        if (num < 127)
-            return 1;
-        var t = table || init_table();
-        if (num < 65536)
-            return t[num >> 4] >> ((num & 15) << 1) & 3;
-        return wcwidthHigh(num);
-    };
-})({ nul: 0, control: 0 });
 
 
 
-},{"./Buffer":1,"./Charsets":3,"./EscapeSequences":5,"./renderer/Types":26}],8:[function(require,module,exports){
+},{"./Buffer":1,"./CharWidth":3,"./Charsets":4,"./EscapeSequences":6,"./renderer/Types":27}],9:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -1816,7 +1832,7 @@ exports.Linkifier = Linkifier;
 
 
 
-},{"./EventEmitter":6,"./Types":13,"./input/MouseZoneManager":16}],9:[function(require,module,exports){
+},{"./EventEmitter":7,"./Types":14,"./input/MouseZoneManager":17}],10:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var EscapeSequences_1 = require("./EscapeSequences");
@@ -2316,7 +2332,7 @@ exports.Parser = Parser;
 
 
 
-},{"./Charsets":3,"./EscapeSequences":5}],10:[function(require,module,exports){
+},{"./Charsets":4,"./EscapeSequences":6}],11:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -2461,6 +2477,7 @@ var SelectionManager = (function (_super) {
     SelectionManager.prototype.selectAll = function () {
         this._model.isSelectAllActive = true;
         this.refresh();
+        this.emit('selection');
     };
     SelectionManager.prototype._onTrim = function (amount) {
         var needsRefresh = this._model.onTrim(amount);
@@ -2491,6 +2508,9 @@ var SelectionManager = (function (_super) {
         offset /= DRAG_SCROLL_MAX_THRESHOLD;
         return (offset / Math.abs(offset)) + Math.round(offset * (DRAG_SCROLL_MAX_SPEED - 1));
     };
+    SelectionManager.prototype.shouldForceSelection = function (event) {
+        return Browser.isMac ? event.altKey : event.shiftKey;
+    };
     SelectionManager.prototype.onMouseDown = function (event) {
         if (event.button === 2 && this.hasSelection) {
             return;
@@ -2499,8 +2519,7 @@ var SelectionManager = (function (_super) {
             return;
         }
         if (!this._enabled) {
-            var shouldForceSelection = Browser.isMac ? event.altKey : event.shiftKey;
-            if (!shouldForceSelection) {
+            if (!this.shouldForceSelection(event)) {
                 return;
             }
             event.stopPropagation();
@@ -2597,7 +2616,7 @@ var SelectionManager = (function (_super) {
         }
         this._dragScrollAmount = this._getMouseEventScrollAmount(event);
         if (this._dragScrollAmount > 0) {
-            this._model.selectionEnd[0] = this._terminal.cols - 1;
+            this._model.selectionEnd[0] = this._terminal.cols;
         }
         else if (this._dragScrollAmount < 0) {
             this._model.selectionEnd[0] = 0;
@@ -2616,7 +2635,7 @@ var SelectionManager = (function (_super) {
     };
     SelectionManager.prototype._dragScroll = function () {
         if (this._dragScrollAmount) {
-            this._terminal.scrollDisp(this._dragScrollAmount, false);
+            this._terminal.scrollLines(this._dragScrollAmount, false);
             if (this._dragScrollAmount > 0) {
                 this._model.selectionEnd = [this._terminal.cols - 1, this._terminal.buffer.ydisp + this._terminal.rows];
             }
@@ -2628,6 +2647,8 @@ var SelectionManager = (function (_super) {
     };
     SelectionManager.prototype._onMouseUp = function (event) {
         this._removeMouseDownListeners();
+        if (this.hasSelection)
+            this.emit('selection');
     };
     SelectionManager.prototype._convertViewportColToCharacterIndex = function (bufferLine, coords) {
         var charIndex = coords[0];
@@ -2754,7 +2775,7 @@ exports.SelectionManager = SelectionManager;
 
 
 
-},{"./Buffer":1,"./EventEmitter":6,"./SelectionModel":11,"./utils/Browser":27,"./utils/MouseHelper":31}],11:[function(require,module,exports){
+},{"./Buffer":1,"./EventEmitter":7,"./SelectionModel":12,"./utils/Browser":28,"./utils/MouseHelper":32}],12:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var SelectionModel = (function () {
@@ -2832,7 +2853,7 @@ exports.SelectionModel = SelectionModel;
 
 
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -2846,6 +2867,7 @@ var __extends = (this && this.__extends) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 var BufferSet_1 = require("./BufferSet");
+var Buffer_1 = require("./Buffer");
 var CompositionHelper_1 = require("./CompositionHelper");
 var EventEmitter_1 = require("./EventEmitter");
 var Viewport_1 = require("./Viewport");
@@ -2867,9 +2889,10 @@ var document = (typeof window !== 'undefined') ? window.document : null;
 var WRITE_BUFFER_PAUSE_THRESHOLD = 5;
 var WRITE_BATCH_SIZE = 300;
 var DEFAULT_OPTIONS = {
+    cols: 80,
+    rows: 24,
     convertEol: false,
     termName: 'xterm',
-    geometry: [80, 24],
     cursorBlink: false,
     cursorStyle: 'block',
     bellSound: Sounds_1.BellSound,
@@ -2907,9 +2930,8 @@ var Terminal = (function (_super) {
             _this[key] = _this.options[key];
         });
         this.parent = document ? document.body : null;
-        this.cols = this.options.cols || this.options.geometry[0];
-        this.rows = this.options.rows || this.options.geometry[1];
-        this.geometry = [this.cols, this.rows];
+        this.cols = this.options.cols;
+        this.rows = this.options.rows;
         if (this.options.handler) {
             this.on('data', this.options.handler);
         }
@@ -2922,6 +2944,7 @@ var Terminal = (function (_super) {
         this.originMode = false;
         this.insertMode = false;
         this.wraparoundMode = true;
+        this.bracketedPasteMode = false;
         this.charset = null;
         this.gcharset = null;
         this.glevel = 0;
@@ -2959,7 +2982,9 @@ var Terminal = (function (_super) {
         return (this.defAttr & ~0x1ff) | (this.curAttr & 0x1ff);
     };
     Terminal.prototype.focus = function () {
-        this.textarea.focus();
+        if (this.textarea) {
+            this.textarea.focus();
+        }
     };
     Object.defineProperty(Terminal.prototype, "isFocused", {
         get: function () {
@@ -3010,6 +3035,7 @@ var Terminal = (function (_super) {
                 }
                 break;
             case 'scrollback':
+                value = Math.min(value, Buffer_1.MAX_BUFFER_SIZE);
                 if (value < 0) {
                     console.warn(key + " cannot be less than 0, value: " + value);
                     return;
@@ -3160,9 +3186,11 @@ var Terminal = (function (_super) {
         this.element.classList.add('terminal');
         this.element.classList.add('xterm');
         this.element.setAttribute('tabindex', '0');
+        this.parent.appendChild(this.element);
+        var fragment = document.createDocumentFragment();
         this.viewportElement = document.createElement('div');
         this.viewportElement.classList.add('xterm-viewport');
-        this.element.appendChild(this.viewportElement);
+        fragment.appendChild(this.viewportElement);
         this.viewportScrollArea = document.createElement('div');
         this.viewportScrollArea.classList.add('xterm-scroll-area');
         this.viewportElement.appendChild(this.viewportScrollArea);
@@ -3172,7 +3200,7 @@ var Terminal = (function (_super) {
         this.linkifier.attachToDom(this._mouseZoneManager);
         this.helperContainer = document.createElement('div');
         this.helperContainer.classList.add('xterm-helpers');
-        this.element.appendChild(this.helperContainer);
+        fragment.appendChild(this.helperContainer);
         this.textarea = document.createElement('textarea');
         this.textarea.classList.add('xterm-helper-textarea');
         this.textarea.setAttribute('autocorrect', 'off');
@@ -3188,8 +3216,8 @@ var Terminal = (function (_super) {
         this.helperContainer.appendChild(this.compositionView);
         this.charSizeStyleElement = document.createElement('style');
         this.helperContainer.appendChild(this.charSizeStyleElement);
-        this.parent.appendChild(this.element);
         this.charMeasure = new CharMeasure_1.CharMeasure(document, this.helperContainer);
+        this.element.appendChild(fragment);
         this.renderer = new Renderer_1.Renderer(this, this.options.theme);
         this.options.theme = null;
         this.viewport = new Viewport_1.Viewport(this, this.viewportElement, this.viewportScrollArea, this.charMeasure);
@@ -3226,17 +3254,8 @@ var Terminal = (function (_super) {
             this.viewport.onThemeChanged(colors);
         }
     };
-    Terminal.loadAddon = function (addon, callback) {
-        if (typeof exports === 'object' && typeof module === 'object') {
-            return require('./addons/' + addon + '/' + addon);
-        }
-        else if (typeof define === 'function') {
-            return require(['./addons/' + addon + '/' + addon], callback);
-        }
-        else {
-            console.error('Cannot load a module without a CommonJS or RequireJS environment.');
-            return false;
-        }
+    Terminal.applyAddon = function (addon) {
+        addon.apply(Terminal);
     };
     Terminal.prototype.bindMouse = function () {
         var _this = this;
@@ -3414,8 +3433,9 @@ var Terminal = (function (_super) {
         on(el, 'mousedown', function (ev) {
             ev.preventDefault();
             _this.focus();
-            if (!_this.mouseEvents)
+            if (!_this.mouseEvents || _this.selectionManager.shouldForceSelection(ev)) {
                 return;
+            }
             sendButton(ev);
             if (_this.vt200Mouse) {
                 ev.overrideType = 'mouseup';
@@ -3525,7 +3545,7 @@ var Terminal = (function (_super) {
         this.updateRange(this.buffer.scrollBottom);
         this.emit('scroll', this.buffer.ydisp);
     };
-    Terminal.prototype.scrollDisp = function (disp, suppressScrollEvent) {
+    Terminal.prototype.scrollLines = function (disp, suppressScrollEvent) {
         if (disp < 0) {
             if (this.buffer.ydisp === 0) {
                 return;
@@ -3546,13 +3566,13 @@ var Terminal = (function (_super) {
         this.refresh(0, this.rows - 1);
     };
     Terminal.prototype.scrollPages = function (pageCount) {
-        this.scrollDisp(pageCount * (this.rows - 1));
+        this.scrollLines(pageCount * (this.rows - 1));
     };
     Terminal.prototype.scrollToTop = function () {
-        this.scrollDisp(-this.buffer.ydisp);
+        this.scrollLines(-this.buffer.ydisp);
     };
     Terminal.prototype.scrollToBottom = function () {
-        this.scrollDisp(this.buffer.ybase - this.buffer.ydisp);
+        this.scrollLines(this.buffer.ybase - this.buffer.ydisp);
     };
     Terminal.prototype.write = function (data) {
         var _this = this;
@@ -3659,8 +3679,8 @@ var Terminal = (function (_super) {
         else if (result.key === EscapeSequences_1.C0.DC1) {
             this.writeStopped = false;
         }
-        if (result.scrollDisp) {
-            this.scrollDisp(result.scrollDisp);
+        if (result.scrollLines) {
+            this.scrollLines(result.scrollLines);
             return this.cancel(ev, true);
         }
         if (isThirdLevelShift(this.browser, ev)) {
@@ -3682,10 +3702,44 @@ var Terminal = (function (_super) {
         var result = {
             cancel: false,
             key: undefined,
-            scrollDisp: undefined
+            scrollLines: undefined
         };
         var modifiers = (ev.shiftKey ? 1 : 0) | (ev.altKey ? 2 : 0) | (ev.ctrlKey ? 4 : 0) | (ev.metaKey ? 8 : 0);
         switch (ev.keyCode) {
+            case 0:
+                if (ev.key === 'UIKeyInputUpArrow') {
+                    if (this.applicationCursor) {
+                        result.key = EscapeSequences_1.C0.ESC + 'OA';
+                    }
+                    else {
+                        result.key = EscapeSequences_1.C0.ESC + '[A';
+                    }
+                }
+                else if (ev.key === 'UIKeyInputLeftArrow') {
+                    if (this.applicationCursor) {
+                        result.key = EscapeSequences_1.C0.ESC + 'OD';
+                    }
+                    else {
+                        result.key = EscapeSequences_1.C0.ESC + '[D';
+                    }
+                }
+                else if (ev.key === 'UIKeyInputRightArrow') {
+                    if (this.applicationCursor) {
+                        result.key = EscapeSequences_1.C0.ESC + 'OC';
+                    }
+                    else {
+                        result.key = EscapeSequences_1.C0.ESC + '[C';
+                    }
+                }
+                else if (ev.key === 'UIKeyInputDownArrow') {
+                    if (this.applicationCursor) {
+                        result.key = EscapeSequences_1.C0.ESC + 'OB';
+                    }
+                    else {
+                        result.key = EscapeSequences_1.C0.ESC + '[B';
+                    }
+                }
+                break;
             case 8:
                 if (ev.shiftKey) {
                     result.key = EscapeSequences_1.C0.BS;
@@ -3796,7 +3850,7 @@ var Terminal = (function (_super) {
                 break;
             case 33:
                 if (ev.shiftKey) {
-                    result.scrollDisp = -(this.rows - 1);
+                    result.scrollLines = -(this.rows - 1);
                 }
                 else {
                     result.key = EscapeSequences_1.C0.ESC + '[5~';
@@ -3804,7 +3858,7 @@ var Terminal = (function (_super) {
                 break;
             case 34:
                 if (ev.shiftKey) {
-                    result.scrollDisp = this.rows - 1;
+                    result.scrollLines = this.rows - 1;
                 }
                 else {
                     result.key = EscapeSequences_1.C0.ESC + '[6~';
@@ -4045,7 +4099,6 @@ var Terminal = (function (_super) {
         this.buffers.setupTabStops(this.cols);
         this.charMeasure.measure(this.options);
         this.refresh(0, this.rows - 1);
-        this.geometry = [this.cols, this.rows];
         this.emit('resize', { cols: x, rows: y });
     };
     Terminal.prototype.updateRange = function (y) {
@@ -4300,7 +4353,7 @@ function matchColor_(r1, g1, b1) {
 
 
 
-},{"./BufferSet":2,"./CompositionHelper":4,"./EscapeSequences":5,"./EventEmitter":6,"./InputHandler":7,"./Linkifier":8,"./Parser":9,"./SelectionManager":10,"./Viewport":14,"./handlers/Clipboard":15,"./input/MouseZoneManager":16,"./renderer/CharAtlas":18,"./renderer/ColorManager":19,"./renderer/Renderer":23,"./utils/Browser":27,"./utils/CharMeasure":28,"./utils/MouseHelper":31,"./utils/Sounds":32}],13:[function(require,module,exports){
+},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/CharAtlas":19,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./utils/Browser":28,"./utils/CharMeasure":29,"./utils/MouseHelper":32,"./utils/Sounds":33}],14:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var LinkHoverEventTypes;
@@ -4313,7 +4366,7 @@ var LinkHoverEventTypes;
 
 
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Viewport = (function () {
@@ -4368,7 +4421,7 @@ var Viewport = (function () {
     Viewport.prototype.onScroll = function (ev) {
         var newRow = Math.round(this.viewportElement.scrollTop / this.currentRowHeight);
         var diff = newRow - this.terminal.buffer.ydisp;
-        this.terminal.scrollDisp(diff, true);
+        this.terminal.scrollLines(diff, true);
     };
     Viewport.prototype.onWheel = function (ev) {
         if (ev.deltaY === 0) {
@@ -4405,7 +4458,7 @@ exports.Viewport = Viewport;
 
 
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 function prepareTextForTerminal(text, isMSWindows) {
@@ -4415,6 +4468,13 @@ function prepareTextForTerminal(text, isMSWindows) {
     return text;
 }
 exports.prepareTextForTerminal = prepareTextForTerminal;
+function bracketTextForPaste(text, bracketedPasteMode) {
+    if (bracketedPasteMode) {
+        return '\x1b[200~' + text + '\x1b[201~';
+    }
+    return text;
+}
+exports.bracketTextForPaste = bracketTextForPaste;
 function copyHandler(ev, term, selectionManager) {
     if (term.browser.isMSIE) {
         window.clipboardData.setData('Text', selectionManager.selectionText);
@@ -4430,6 +4490,7 @@ function pasteHandler(ev, term) {
     var text;
     var dispatchPaste = function (text) {
         text = prepareTextForTerminal(text, term.browser.isMSWindows);
+        text = bracketTextForPaste(text, term.bracketedPasteMode);
         term.handler(text);
         term.textarea.value = '';
         term.emit('paste', text);
@@ -4476,7 +4537,7 @@ exports.rightClickHandler = rightClickHandler;
 
 
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var HOVER_DURATION = 500;
@@ -4590,6 +4651,9 @@ var MouseZoneManager = (function () {
     };
     MouseZoneManager.prototype._findZoneEventAt = function (e) {
         var coords = this._terminal.mouseHelper.getCoords(e, this._terminal.element, this._terminal.charMeasure, this._terminal.options.lineHeight, this._terminal.cols, this._terminal.rows);
+        if (!coords) {
+            return null;
+        }
         for (var i = 0; i < this._zones.length; i++) {
             var zone = this._zones[i];
             if (zone.y === coords[1] && zone.x1 <= coords[0] && zone.x2 > coords[0]) {
@@ -4618,7 +4682,7 @@ exports.MouseZone = MouseZone;
 
 
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var CharAtlas_1 = require("./CharAtlas");
@@ -4629,6 +4693,12 @@ var BaseRenderLayer = (function () {
     function BaseRenderLayer(container, id, zIndex, _alpha, _colors) {
         this._alpha = _alpha;
         this._colors = _colors;
+        this._scaledCharWidth = 0;
+        this._scaledCharHeight = 0;
+        this._scaledCellWidth = 0;
+        this._scaledCellHeight = 0;
+        this._scaledCharLeft = 0;
+        this._scaledCharTop = 0;
         this._canvas = document.createElement('canvas');
         this._canvas.id = "xterm-" + id + "-layer";
         this._canvas.style.zIndex = zIndex.toString();
@@ -4783,7 +4853,7 @@ exports.BaseRenderLayer = BaseRenderLayer;
 
 
 
-},{"../Buffer":1,"./CharAtlas":18}],18:[function(require,module,exports){
+},{"../Buffer":1,"./CharAtlas":19}],19:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Browser_1 = require("../utils/Browser");
@@ -4946,7 +5016,7 @@ var CharAtlasGenerator = (function () {
 
 
 
-},{"../utils/Browser":27}],19:[function(require,module,exports){
+},{"../utils/Browser":28}],20:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var DEFAULT_FOREGROUND = '#ffffff';
@@ -5026,6 +5096,9 @@ var ColorManager = (function () {
         this.colors.ansi[15] = theme.brightWhite || exports.DEFAULT_ANSI_COLORS[15];
     };
     ColorManager.prototype._validateColor = function (color, fallback) {
+        if (!color) {
+            return fallback;
+        }
         if (color.length === 7 && color.charAt(0) === '#') {
             return color;
         }
@@ -5043,7 +5116,7 @@ exports.ColorManager = ColorManager;
 
 
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5329,7 +5402,7 @@ var CursorBlinkStateManager = (function () {
 
 
 
-},{"../Buffer":1,"./BaseRenderLayer":17}],21:[function(require,module,exports){
+},{"../Buffer":1,"./BaseRenderLayer":18}],22:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var GridCache = (function () {
@@ -5361,7 +5434,7 @@ exports.GridCache = GridCache;
 
 
 
-},{}],22:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5412,7 +5485,7 @@ exports.LinkRenderLayer = LinkRenderLayer;
 
 
 
-},{"../Types":13,"./BaseRenderLayer":17}],23:[function(require,module,exports){
+},{"../Types":14,"./BaseRenderLayer":18}],24:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5463,6 +5536,7 @@ var Renderer = (function (_super) {
             actualCellHeight: null
         };
         _this._devicePixelRatio = window.devicePixelRatio;
+        _this._updateDimensions();
         return _this;
     }
     Renderer.prototype.onWindowResize = function (devicePixelRatio) {
@@ -5483,21 +5557,7 @@ var Renderer = (function (_super) {
     };
     Renderer.prototype.onResize = function (cols, rows, didCharSizeChange) {
         var _this = this;
-        if (!this._terminal.charMeasure.width || !this._terminal.charMeasure.height) {
-            return;
-        }
-        this.dimensions.scaledCharWidth = Math.floor(this._terminal.charMeasure.width * window.devicePixelRatio);
-        this.dimensions.scaledCharHeight = Math.ceil(this._terminal.charMeasure.height * window.devicePixelRatio);
-        this.dimensions.scaledCellHeight = Math.floor(this.dimensions.scaledCharHeight * this._terminal.options.lineHeight);
-        this.dimensions.scaledCharTop = this._terminal.options.lineHeight === 1 ? 0 : Math.round((this.dimensions.scaledCellHeight - this.dimensions.scaledCharHeight) / 2);
-        this.dimensions.scaledCellWidth = this.dimensions.scaledCharWidth + Math.round(this._terminal.options.letterSpacing);
-        this.dimensions.scaledCharLeft = Math.floor(this._terminal.options.letterSpacing / 2);
-        this.dimensions.scaledCanvasHeight = this._terminal.rows * this.dimensions.scaledCellHeight;
-        this.dimensions.scaledCanvasWidth = this._terminal.cols * this.dimensions.scaledCellWidth;
-        this.dimensions.canvasHeight = Math.round(this.dimensions.scaledCanvasHeight / window.devicePixelRatio);
-        this.dimensions.canvasWidth = Math.round(this.dimensions.scaledCanvasWidth / window.devicePixelRatio);
-        this.dimensions.actualCellHeight = this.dimensions.canvasHeight / this._terminal.rows;
-        this.dimensions.actualCellWidth = this.dimensions.canvasWidth / this._terminal.cols;
+        this._updateDimensions();
         this._renderLayers.forEach(function (l) { return l.resize(_this._terminal, _this.dimensions, didCharSizeChange); });
         this._terminal.refresh(0, this._terminal.rows - 1);
         this.emit('resize', {
@@ -5565,13 +5625,30 @@ var Renderer = (function (_super) {
         this._renderLayers.forEach(function (l) { return l.onGridChanged(_this._terminal, start, end); });
         this._terminal.emit('refresh', { start: start, end: end });
     };
+    Renderer.prototype._updateDimensions = function () {
+        if (!this._terminal.charMeasure.width || !this._terminal.charMeasure.height) {
+            return;
+        }
+        this.dimensions.scaledCharWidth = Math.floor(this._terminal.charMeasure.width * window.devicePixelRatio);
+        this.dimensions.scaledCharHeight = Math.ceil(this._terminal.charMeasure.height * window.devicePixelRatio);
+        this.dimensions.scaledCellHeight = Math.floor(this.dimensions.scaledCharHeight * this._terminal.options.lineHeight);
+        this.dimensions.scaledCharTop = this._terminal.options.lineHeight === 1 ? 0 : Math.round((this.dimensions.scaledCellHeight - this.dimensions.scaledCharHeight) / 2);
+        this.dimensions.scaledCellWidth = this.dimensions.scaledCharWidth + Math.round(this._terminal.options.letterSpacing);
+        this.dimensions.scaledCharLeft = Math.floor(this._terminal.options.letterSpacing / 2);
+        this.dimensions.scaledCanvasHeight = this._terminal.rows * this.dimensions.scaledCellHeight;
+        this.dimensions.scaledCanvasWidth = this._terminal.cols * this.dimensions.scaledCellWidth;
+        this.dimensions.canvasHeight = Math.round(this.dimensions.scaledCanvasHeight / window.devicePixelRatio);
+        this.dimensions.canvasWidth = Math.round(this.dimensions.scaledCanvasWidth / window.devicePixelRatio);
+        this.dimensions.actualCellHeight = this.dimensions.canvasHeight / this._terminal.rows;
+        this.dimensions.actualCellWidth = this.dimensions.canvasWidth / this._terminal.cols;
+    };
     return Renderer;
 }(EventEmitter_1.EventEmitter));
 exports.Renderer = Renderer;
 
 
 
-},{"../EventEmitter":6,"./ColorManager":19,"./CursorRenderLayer":20,"./LinkRenderLayer":22,"./SelectionRenderLayer":24,"./TextRenderLayer":25}],24:[function(require,module,exports){
+},{"../EventEmitter":7,"./ColorManager":20,"./CursorRenderLayer":21,"./LinkRenderLayer":23,"./SelectionRenderLayer":25,"./TextRenderLayer":26}],25:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5645,7 +5722,7 @@ exports.SelectionRenderLayer = SelectionRenderLayer;
 
 
 
-},{"./BaseRenderLayer":17}],25:[function(require,module,exports){
+},{"./BaseRenderLayer":18}],26:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5801,7 +5878,7 @@ exports.TextRenderLayer = TextRenderLayer;
 
 
 
-},{"../Buffer":1,"./BaseRenderLayer":17,"./GridCache":21,"./Types":26}],26:[function(require,module,exports){
+},{"../Buffer":1,"./BaseRenderLayer":18,"./GridCache":22,"./Types":27}],27:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var FLAGS;
@@ -5817,7 +5894,7 @@ var FLAGS;
 
 
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Generic_1 = require("./Generic");
@@ -5834,7 +5911,7 @@ exports.isLinux = platform.indexOf('Linux') >= 0;
 
 
 
-},{"./Generic":30}],28:[function(require,module,exports){
+},{"./Generic":31}],29:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5854,6 +5931,14 @@ var CharMeasure = (function (_super) {
         var _this = _super.call(this) || this;
         _this._document = document;
         _this._parentElement = parentElement;
+        _this._measureElement = _this._document.createElement('span');
+        _this._measureElement.style.position = 'absolute';
+        _this._measureElement.style.top = '0';
+        _this._measureElement.style.left = '-9999em';
+        _this._measureElement.style.lineHeight = 'normal';
+        _this._measureElement.textContent = 'W';
+        _this._measureElement.setAttribute('aria-hidden', 'true');
+        _this._parentElement.appendChild(_this._measureElement);
         return _this;
     }
     Object.defineProperty(CharMeasure.prototype, "width", {
@@ -5871,23 +5956,6 @@ var CharMeasure = (function (_super) {
         configurable: true
     });
     CharMeasure.prototype.measure = function (options) {
-        var _this = this;
-        if (!this._measureElement) {
-            this._measureElement = this._document.createElement('span');
-            this._measureElement.style.position = 'absolute';
-            this._measureElement.style.top = '0';
-            this._measureElement.style.left = '-9999em';
-            this._measureElement.style.lineHeight = 'normal';
-            this._measureElement.textContent = 'W';
-            this._measureElement.setAttribute('aria-hidden', 'true');
-            this._parentElement.appendChild(this._measureElement);
-            setTimeout(function () { return _this._doMeasure(options); }, 0);
-        }
-        else {
-            this._doMeasure(options);
-        }
-    };
-    CharMeasure.prototype._doMeasure = function (options) {
         this._measureElement.style.fontFamily = options.fontFamily;
         this._measureElement.style.fontSize = options.fontSize + "px";
         var geometry = this._measureElement.getBoundingClientRect();
@@ -5906,7 +5974,7 @@ exports.CharMeasure = CharMeasure;
 
 
 
-},{"../EventEmitter":6}],29:[function(require,module,exports){
+},{"../EventEmitter":7}],30:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6076,7 +6144,7 @@ exports.CircularList = CircularList;
 
 
 
-},{"../EventEmitter":6}],30:[function(require,module,exports){
+},{"../EventEmitter":7}],31:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 function contains(arr, el) {
@@ -6087,7 +6155,7 @@ exports.contains = contains;
 
 
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var MouseHelper = (function () {
@@ -6124,7 +6192,7 @@ var MouseHelper = (function () {
         }
         coords[0] = Math.ceil((coords[0] + (isSelection ? this._renderer.dimensions.actualCellWidth / 2 : 0)) / this._renderer.dimensions.actualCellWidth);
         coords[1] = Math.ceil(coords[1] / this._renderer.dimensions.actualCellHeight);
-        coords[0] = Math.min(Math.max(coords[0], 1), colCount);
+        coords[0] = Math.min(Math.max(coords[0], 1), colCount + (isSelection ? 1 : 0));
         coords[1] = Math.min(Math.max(coords[1], 1), rowCount);
         return coords;
     };
@@ -6142,14 +6210,14 @@ exports.MouseHelper = MouseHelper;
 
 
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BellSound = 'data:audio/wav;base64,UklGRigBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQBAADpAFgCwAMlBZoG/wdmCcoKRAypDQ8PbRDBEQQTOxRtFYcWlBePGIUZXhoiG88bcBz7HHIdzh0WHlMeZx51HmkeUx4WHs8dah0AHXwc3hs9G4saxRnyGBIYGBcQFv8U4RPAEoYRQBACD70NWwwHC6gJOwjWBloF7gOBAhABkf8b/qv8R/ve+Xf4Ife79W/0JfPZ8Z/wde9N7ijtE+wU6xvqM+lb6H7nw+YX5mrlxuQz5Mzje+Ma49fioeKD4nXiYeJy4pHitOL04j/jn+MN5IPkFOWs5U3mDefM55/ogOl36m7rdOyE7abuyu8D8Unyj/Pg9D/2qfcb+Yn6/vuK/Qj/lAAlAg==';
 
 
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Terminal_1 = require("./Terminal");
@@ -6157,6 +6225,6 @@ module.exports = Terminal_1.Terminal;
 
 
 
-},{"./Terminal":12}]},{},[33])(33)
+},{"./Terminal":13}]},{},[34])(34)
 });
 //# sourceMappingURL=xterm.js.map
