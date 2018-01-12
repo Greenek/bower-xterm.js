@@ -907,7 +907,7 @@ var InputHandler = (function () {
         if (this._terminal.buffer.x >= this._terminal.cols) {
             this._terminal.buffer.x--;
         }
-        this._terminal.emit('lineFeed');
+        this._terminal.emit('linefeed');
     };
     InputHandler.prototype.carriageReturn = function () {
         this._terminal.buffer.x = 0;
@@ -2062,23 +2062,30 @@ var Parser = (function () {
                             this._position--;
                             break;
                         case 'N':
+                            this._state = ParserState.NORMAL;
                             break;
                         case 'O':
+                            this._state = ParserState.NORMAL;
                             break;
                         case 'n':
                             this._terminal.setgLevel(2);
+                            this._state = ParserState.NORMAL;
                             break;
                         case 'o':
                             this._terminal.setgLevel(3);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '|':
                             this._terminal.setgLevel(3);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '}':
                             this._terminal.setgLevel(2);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '~':
                             this._terminal.setgLevel(1);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '7':
                             this._inputHandler.saveCursor();
@@ -2477,7 +2484,7 @@ var SelectionManager = (function (_super) {
     SelectionManager.prototype.selectAll = function () {
         this._model.isSelectAllActive = true;
         this.refresh();
-        this.emit('selection');
+        this._terminal.emit('selection');
     };
     SelectionManager.prototype._onTrim = function (amount) {
         var needsRefresh = this._model.onTrim(amount);
@@ -2637,7 +2644,7 @@ var SelectionManager = (function (_super) {
         if (this._dragScrollAmount) {
             this._terminal.scrollLines(this._dragScrollAmount, false);
             if (this._dragScrollAmount > 0) {
-                this._model.selectionEnd = [this._terminal.cols - 1, this._terminal.buffer.ydisp + this._terminal.rows];
+                this._model.selectionEnd = [this._terminal.cols - 1, Math.min(this._terminal.buffer.ydisp + this._terminal.rows, this._terminal.buffer.lines.length - 1)];
             }
             else {
                 this._model.selectionEnd = [0, this._terminal.buffer.ydisp];
@@ -2648,7 +2655,7 @@ var SelectionManager = (function (_super) {
     SelectionManager.prototype._onMouseUp = function (event) {
         this._removeMouseDownListeners();
         if (this.hasSelection)
-            this.emit('selection');
+            this._terminal.emit('selection');
     };
     SelectionManager.prototype._convertViewportColToCharacterIndex = function (bufferLine, coords) {
         var charIndex = coords[0];
@@ -3194,7 +3201,6 @@ var Terminal = (function (_super) {
         this.viewportScrollArea = document.createElement('div');
         this.viewportScrollArea.classList.add('xterm-scroll-area');
         this.viewportElement.appendChild(this.viewportScrollArea);
-        this.syncBellSound();
         this._mouseZoneManager = new MouseZoneManager_1.MouseZoneManager(this);
         this.on('scroll', function () { return _this._mouseZoneManager.clearAll(); });
         this.linkifier.attachToDom(this._mouseZoneManager);
@@ -3217,6 +3223,7 @@ var Terminal = (function (_super) {
         this.charSizeStyleElement = document.createElement('style');
         this.helperContainer.appendChild(this.charSizeStyleElement);
         this.charMeasure = new CharMeasure_1.CharMeasure(document, this.helperContainer);
+        this.syncBellSound();
         this.element.appendChild(fragment);
         this.renderer = new Renderer_1.Renderer(this, this.options.theme);
         this.options.theme = null;
@@ -3226,7 +3233,6 @@ var Terminal = (function (_super) {
         this.on('resize', function () { return _this.renderer.onResize(_this.cols, _this.rows, false); });
         this.on('blur', function () { return _this.renderer.onBlur(); });
         this.on('focus', function () { return _this.renderer.onFocus(); });
-        window.addEventListener('resize', function () { return _this.renderer.onWindowResize(window.devicePixelRatio); });
         this.charMeasure.on('charsizechanged', function () { return _this.renderer.onResize(_this.cols, _this.rows, true); });
         this.renderer.on('resize', function (dimensions) { return _this.viewport.syncScrollArea(); });
         this.selectionManager = new SelectionManager_1.SelectionManager(this, this.buffer, this.charMeasure);
@@ -3745,6 +3751,10 @@ var Terminal = (function (_super) {
                     result.key = EscapeSequences_1.C0.BS;
                     break;
                 }
+                else if (ev.altKey) {
+                    result.key = EscapeSequences_1.C0.ESC + EscapeSequences_1.C0.DEL;
+                    break;
+                }
                 result.key = EscapeSequences_1.C0.DEL;
                 break;
             case 9:
@@ -4247,6 +4257,9 @@ var Terminal = (function (_super) {
             this.options.bellStyle === 'both';
     };
     Terminal.prototype.syncBellSound = function () {
+        if (!this.element) {
+            return;
+        }
         if (this.soundBell() && this.bellAudioElement) {
             this.bellAudioElement.setAttribute('src', this.options.bellSound);
         }
@@ -4353,7 +4366,7 @@ function matchColor_(r1, g1, b1) {
 
 
 
-},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/CharAtlas":19,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./utils/Browser":28,"./utils/CharMeasure":29,"./utils/MouseHelper":32,"./utils/Sounds":33}],14:[function(require,module,exports){
+},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/CharAtlas":19,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./utils/Browser":28,"./utils/CharMeasure":29,"./utils/MouseHelper":32,"./utils/Sounds":34}],14:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var LinkHoverEventTypes;
@@ -5504,6 +5517,7 @@ var CursorRenderLayer_1 = require("./CursorRenderLayer");
 var ColorManager_1 = require("./ColorManager");
 var LinkRenderLayer_1 = require("./LinkRenderLayer");
 var EventEmitter_1 = require("../EventEmitter");
+var ScreenDprMonitor_1 = require("../utils/ScreenDprMonitor");
 var Renderer = (function (_super) {
     __extends(Renderer, _super);
     function Renderer(_terminal, theme) {
@@ -5511,6 +5525,8 @@ var Renderer = (function (_super) {
         _this._terminal = _terminal;
         _this._refreshRowsQueue = [];
         _this._refreshAnimationFrame = null;
+        _this._isPaused = false;
+        _this._needsFullRefresh = false;
         _this.colorManager = new ColorManager_1.ColorManager();
         if (theme) {
             _this.colorManager.setTheme(theme);
@@ -5537,8 +5553,20 @@ var Renderer = (function (_super) {
         };
         _this._devicePixelRatio = window.devicePixelRatio;
         _this._updateDimensions();
+        _this._screenDprMonitor = new ScreenDprMonitor_1.ScreenDprMonitor();
+        _this._screenDprMonitor.setListener(function () { return _this.onWindowResize(window.devicePixelRatio); });
+        if ('IntersectionObserver' in window) {
+            var observer = new IntersectionObserver(function (e) { return _this.onIntersectionChange(e[0]); }, { threshold: 0 });
+            observer.observe(_this._terminal.element);
+        }
         return _this;
     }
+    Renderer.prototype.onIntersectionChange = function (entry) {
+        this._isPaused = entry.intersectionRatio === 0;
+        if (!this._isPaused && this._needsFullRefresh) {
+            this._terminal.refresh(0, this._terminal.rows - 1);
+        }
+    };
     Renderer.prototype.onWindowResize = function (devicePixelRatio) {
         if (this._devicePixelRatio !== devicePixelRatio) {
             this._devicePixelRatio = devicePixelRatio;
@@ -5552,14 +5580,24 @@ var Renderer = (function (_super) {
             l.onThemeChanged(_this._terminal, _this.colorManager.colors);
             l.reset(_this._terminal);
         });
-        this._terminal.refresh(0, this._terminal.rows - 1);
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+        }
+        else {
+            this._terminal.refresh(0, this._terminal.rows - 1);
+        }
         return this.colorManager.colors;
     };
     Renderer.prototype.onResize = function (cols, rows, didCharSizeChange) {
         var _this = this;
         this._updateDimensions();
         this._renderLayers.forEach(function (l) { return l.resize(_this._terminal, _this.dimensions, didCharSizeChange); });
-        this._terminal.refresh(0, this._terminal.rows - 1);
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+        }
+        else {
+            this._terminal.refresh(0, this._terminal.rows - 1);
+        }
         this.emit('resize', {
             width: this.dimensions.canvasWidth,
             height: this.dimensions.canvasHeight
@@ -5570,29 +5608,41 @@ var Renderer = (function (_super) {
     };
     Renderer.prototype.onBlur = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onBlur(_this._terminal); });
+        this._runOperation(function (l) { return l.onBlur(_this._terminal); });
     };
     Renderer.prototype.onFocus = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onFocus(_this._terminal); });
+        this._runOperation(function (l) { return l.onFocus(_this._terminal); });
     };
     Renderer.prototype.onSelectionChanged = function (start, end) {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onSelectionChanged(_this._terminal, start, end); });
+        this._runOperation(function (l) { return l.onSelectionChanged(_this._terminal, start, end); });
     };
     Renderer.prototype.onCursorMove = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onCursorMove(_this._terminal); });
+        this._runOperation(function (l) { return l.onCursorMove(_this._terminal); });
     };
     Renderer.prototype.onOptionsChanged = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onOptionsChanged(_this._terminal); });
+        this._runOperation(function (l) { return l.onOptionsChanged(_this._terminal); });
     };
     Renderer.prototype.clear = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.reset(_this._terminal); });
+        this._runOperation(function (l) { return l.reset(_this._terminal); });
+    };
+    Renderer.prototype._runOperation = function (operation) {
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+        }
+        else {
+            this._renderLayers.forEach(function (l) { return operation(l); });
+        }
     };
     Renderer.prototype.queueRefresh = function (start, end) {
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+            return;
+        }
         this._refreshRowsQueue.push({ start: start, end: end });
         if (!this._refreshAnimationFrame) {
             this._refreshAnimationFrame = window.requestAnimationFrame(this._refreshLoop.bind(this));
@@ -5648,7 +5698,7 @@ exports.Renderer = Renderer;
 
 
 
-},{"../EventEmitter":7,"./ColorManager":20,"./CursorRenderLayer":21,"./LinkRenderLayer":23,"./SelectionRenderLayer":25,"./TextRenderLayer":26}],25:[function(require,module,exports){
+},{"../EventEmitter":7,"../utils/ScreenDprMonitor":33,"./ColorManager":20,"./CursorRenderLayer":21,"./LinkRenderLayer":23,"./SelectionRenderLayer":25,"./TextRenderLayer":26}],25:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6213,11 +6263,51 @@ exports.MouseHelper = MouseHelper;
 },{}],33:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BellSound = 'data:audio/wav;base64,UklGRigBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQBAADpAFgCwAMlBZoG/wdmCcoKRAypDQ8PbRDBEQQTOxRtFYcWlBePGIUZXhoiG88bcBz7HHIdzh0WHlMeZx51HmkeUx4WHs8dah0AHXwc3hs9G4saxRnyGBIYGBcQFv8U4RPAEoYRQBACD70NWwwHC6gJOwjWBloF7gOBAhABkf8b/qv8R/ve+Xf4Ife79W/0JfPZ8Z/wde9N7ijtE+wU6xvqM+lb6H7nw+YX5mrlxuQz5Mzje+Ma49fioeKD4nXiYeJy4pHitOL04j/jn+MN5IPkFOWs5U3mDefM55/ogOl36m7rdOyE7abuyu8D8Unyj/Pg9D/2qfcb+Yn6/vuK/Qj/lAAlAg==';
+var ScreenDprMonitor = (function () {
+    function ScreenDprMonitor() {
+    }
+    ScreenDprMonitor.prototype.setListener = function (listener) {
+        var _this = this;
+        if (this._listener) {
+            this.clearListener();
+        }
+        this._listener = listener;
+        this._outerListener = function () {
+            _this._listener(window.devicePixelRatio, _this._currentDevicePixelRatio);
+            _this._updateDpr();
+        };
+        this._updateDpr();
+    };
+    ScreenDprMonitor.prototype._updateDpr = function () {
+        if (this._resolutionMediaMatchList) {
+            this._resolutionMediaMatchList.removeListener(this._outerListener);
+        }
+        this._currentDevicePixelRatio = window.devicePixelRatio;
+        this._resolutionMediaMatchList = window.matchMedia("screen and (resolution: " + window.devicePixelRatio + "dppx)");
+        this._resolutionMediaMatchList.addListener(this._outerListener);
+    };
+    ScreenDprMonitor.prototype.clearListener = function () {
+        if (!this._listener) {
+            return;
+        }
+        this._resolutionMediaMatchList.removeListener(this._outerListener);
+        this._listener = null;
+        this._outerListener = null;
+    };
+    return ScreenDprMonitor;
+}());
+exports.ScreenDprMonitor = ScreenDprMonitor;
 
 
 
 },{}],34:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BellSound = 'data:audio/wav;base64,UklGRigBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQBAADpAFgCwAMlBZoG/wdmCcoKRAypDQ8PbRDBEQQTOxRtFYcWlBePGIUZXhoiG88bcBz7HHIdzh0WHlMeZx51HmkeUx4WHs8dah0AHXwc3hs9G4saxRnyGBIYGBcQFv8U4RPAEoYRQBACD70NWwwHC6gJOwjWBloF7gOBAhABkf8b/qv8R/ve+Xf4Ife79W/0JfPZ8Z/wde9N7ijtE+wU6xvqM+lb6H7nw+YX5mrlxuQz5Mzje+Ma49fioeKD4nXiYeJy4pHitOL04j/jn+MN5IPkFOWs5U3mDefM55/ogOl36m7rdOyE7abuyu8D8Unyj/Pg9D/2qfcb+Yn6/vuK/Qj/lAAlAg==';
+
+
+
+},{}],35:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Terminal_1 = require("./Terminal");
@@ -6225,6 +6315,6 @@ module.exports = Terminal_1.Terminal;
 
 
 
-},{"./Terminal":13}]},{},[34])(34)
+},{"./Terminal":13}]},{},[35])(35)
 });
 //# sourceMappingURL=xterm.js.map

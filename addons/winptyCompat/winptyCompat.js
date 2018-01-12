@@ -5,7 +5,7 @@ function winptyCompatInit(terminal) {
     if (!isWindows) {
         return;
     }
-    terminal.on('lineFeed', function () {
+    terminal.on('linefeed', function () {
         var line = terminal.buffer.lines.get(terminal.buffer.ybase + terminal.buffer.y - 1);
         var lastChar = line[terminal.cols - 1];
         if (lastChar[3] !== 32) {
