@@ -72,7 +72,7 @@ var SearchHelper = (function () {
             return false;
         }
         this._terminal.selectionManager.setSelection(result.col, result.row, result.term.length);
-        this._terminal.scrollLines(result.row - this._terminal.buffer.ydisp, false);
+        this._terminal.scrollLines(result.row - this._terminal.buffer.ydisp);
         return true;
     };
     return SearchHelper;
@@ -86,21 +86,21 @@ exports.SearchHelper = SearchHelper;
 Object.defineProperty(exports, "__esModule", { value: true });
 var SearchHelper_1 = require("./SearchHelper");
 function findNext(terminal, term) {
-    if (!terminal._searchHelper) {
-        terminal.searchHelper = new SearchHelper_1.SearchHelper(terminal);
+    var addonTerminal = terminal;
+    if (!addonTerminal.__searchHelper) {
+        addonTerminal.__searchHelper = new SearchHelper_1.SearchHelper(addonTerminal);
     }
-    return terminal.searchHelper.findNext(term);
+    return addonTerminal.__searchHelper.findNext(term);
 }
 exports.findNext = findNext;
-;
 function findPrevious(terminal, term) {
-    if (!terminal._searchHelper) {
-        terminal.searchHelper = new SearchHelper_1.SearchHelper(terminal);
+    var addonTerminal = terminal;
+    if (!addonTerminal.__searchHelper) {
+        addonTerminal.__searchHelper = new SearchHelper_1.SearchHelper(addonTerminal);
     }
-    return terminal.searchHelper.findPrevious(term);
+    return addonTerminal.__searchHelper.findPrevious(term);
 }
 exports.findPrevious = findPrevious;
-;
 function apply(terminalConstructor) {
     terminalConstructor.prototype.findNext = function (term) {
         return findNext(this, term);

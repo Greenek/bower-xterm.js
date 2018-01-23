@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 function toggleFullScreen(term, fullscreen) {
     var fn;
-    if (typeof fullscreen == 'undefined') {
+    if (typeof fullscreen === 'undefined') {
         fn = (term.element.classList.contains('fullscreen')) ? 'remove' : 'add';
     }
     else if (!fullscreen) {
@@ -15,10 +15,9 @@ function toggleFullScreen(term, fullscreen) {
     term.element.classList[fn]('fullscreen');
 }
 exports.toggleFullScreen = toggleFullScreen;
-;
 function apply(terminalConstructor) {
     terminalConstructor.prototype.toggleFullScreen = function (fullscreen) {
-        return toggleFullScreen(this, fullscreen);
+        toggleFullScreen(this, fullscreen);
     };
 }
 exports.apply = apply;

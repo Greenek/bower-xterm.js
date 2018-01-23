@@ -20,7 +20,6 @@ function proposeGeometry(term) {
     return geometry;
 }
 exports.proposeGeometry = proposeGeometry;
-;
 function fit(term) {
     var geometry = proposeGeometry(term);
     if (geometry) {
@@ -31,13 +30,12 @@ function fit(term) {
     }
 }
 exports.fit = fit;
-;
 function apply(terminalConstructor) {
     terminalConstructor.prototype.proposeGeometry = function () {
         return proposeGeometry(this);
     };
     terminalConstructor.prototype.fit = function () {
-        return fit(this);
+        fit(this);
     };
 }
 exports.apply = apply;

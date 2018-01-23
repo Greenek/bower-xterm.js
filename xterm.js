@@ -70,9 +70,6 @@ var Buffer = (function () {
             if (this._terminal.cols < newCols) {
                 var ch = [this._terminal.defAttr, ' ', 1, 32];
                 for (var i = 0; i < this._lines.length; i++) {
-                    if (this._lines.get(i) === undefined) {
-                        this._lines.set(i, this._terminal.blankLine(undefined, undefined, newCols));
-                    }
                     while (this._lines.get(i).length < newCols) {
                         this._lines.get(i).push(ch);
                     }
@@ -259,14 +256,26 @@ var BufferSet = (function (_super) {
         configurable: true
     });
     BufferSet.prototype.activateNormalBuffer = function () {
+        if (this._activeBuffer === this._normal) {
+            return;
+        }
         this._alt.clear();
         this._activeBuffer = this._normal;
-        this.emit('activate', this._normal);
+        this.emit('activate', {
+            activeBuffer: this._normal,
+            inactiveBuffer: this._alt
+        });
     };
     BufferSet.prototype.activateAltBuffer = function () {
+        if (this._activeBuffer === this._alt) {
+            return;
+        }
         this._alt.fillViewportRows();
         this._activeBuffer = this._alt;
-        this.emit('activate', this._alt);
+        this.emit('activate', {
+            activeBuffer: this._alt,
+            inactiveBuffer: this._normal
+        });
     };
     BufferSet.prototype.resize = function (newCols, newRows) {
         this._normal.resize(newCols, newRows);
@@ -700,12 +709,10 @@ var CompositionHelper = (function () {
             setTimeout(function () { return _this.updateCompositionElements(true); }, 0);
         }
     };
-    ;
     CompositionHelper.prototype.clearTextareaPosition = function () {
         this.textarea.style.left = '';
         this.textarea.style.top = '';
     };
-    ;
     return CompositionHelper;
 }());
 exports.CompositionHelper = CompositionHelper;
@@ -752,7 +759,6 @@ var C0;
     C0.SP = '\x20';
     C0.DEL = '\x7f';
 })(C0 = exports.C0 || (exports.C0 = {}));
-;
 
 
 
@@ -833,12 +839,12 @@ var InputHandler = (function () {
     }
     InputHandler.prototype.addChar = function (char, code) {
         if (char >= ' ') {
-            var ch_width = CharWidth_1.wcwidth(code);
+            var chWidth = CharWidth_1.wcwidth(code);
             if (this._terminal.charset && this._terminal.charset[char]) {
                 char = this._terminal.charset[char];
             }
             var row = this._terminal.buffer.y + this._terminal.buffer.ybase;
-            if (!ch_width && this._terminal.buffer.x) {
+            if (!chWidth && this._terminal.buffer.x) {
                 if (this._terminal.buffer.lines.get(row)[this._terminal.buffer.x - 1]) {
                     if (!this._terminal.buffer.lines.get(row)[this._terminal.buffer.x - 1][Buffer_1.CHAR_DATA_WIDTH_INDEX]) {
                         if (this._terminal.buffer.lines.get(row)[this._terminal.buffer.x - 2]) {
@@ -854,7 +860,7 @@ var InputHandler = (function () {
                 }
                 return;
             }
-            if (this._terminal.buffer.x + ch_width - 1 >= this._terminal.cols) {
+            if (this._terminal.buffer.x + chWidth - 1 >= this._terminal.cols) {
                 if (this._terminal.wraparoundMode) {
                     this._terminal.buffer.x = 0;
                     this._terminal.buffer.y++;
@@ -867,13 +873,13 @@ var InputHandler = (function () {
                     }
                 }
                 else {
-                    if (ch_width === 2)
+                    if (chWidth === 2)
                         return;
                 }
             }
             row = this._terminal.buffer.y + this._terminal.buffer.ybase;
             if (this._terminal.insertMode) {
-                for (var moves = 0; moves < ch_width; ++moves) {
+                for (var moves = 0; moves < chWidth; ++moves) {
                     var removed = this._terminal.buffer.lines.get(this._terminal.buffer.y + this._terminal.buffer.ybase).pop();
                     if (removed[Buffer_1.CHAR_DATA_WIDTH_INDEX] === 0
                         && this._terminal.buffer.lines.get(row)[this._terminal.cols - 2]
@@ -883,10 +889,10 @@ var InputHandler = (function () {
                     this._terminal.buffer.lines.get(row).splice(this._terminal.buffer.x, 0, [this._terminal.curAttr, ' ', 1, ' '.charCodeAt(0)]);
                 }
             }
-            this._terminal.buffer.lines.get(row)[this._terminal.buffer.x] = [this._terminal.curAttr, char, ch_width, char.charCodeAt(0)];
+            this._terminal.buffer.lines.get(row)[this._terminal.buffer.x] = [this._terminal.curAttr, char, chWidth, char.charCodeAt(0)];
             this._terminal.buffer.x++;
             this._terminal.updateRange(this._terminal.buffer.y);
-            if (ch_width === 2) {
+            if (chWidth === 2) {
                 this._terminal.buffer.lines.get(row)[this._terminal.buffer.x] = [this._terminal.curAttr, '', 0, undefined];
                 this._terminal.buffer.x++;
             }
@@ -1345,7 +1351,6 @@ var InputHandler = (function () {
                 case 47:
                 case 1047:
                     this._terminal.buffers.activateAltBuffer();
-                    this._terminal.selectionManager.setBuffer(this._terminal.buffer);
                     this._terminal.viewport.syncScrollArea();
                     this._terminal.showCursor();
                     break;
@@ -1425,7 +1430,6 @@ var InputHandler = (function () {
                 case 47:
                 case 1047:
                     this._terminal.buffers.activateNormalBuffer();
-                    this._terminal.selectionManager.setBuffer(this._terminal.buffer);
                     this._terminal.refresh(0, this._terminal.rows - 1);
                     this._terminal.viewport.syncScrollArea();
                     this._terminal.showCursor();
@@ -1694,13 +1698,13 @@ var Linkifier = (function (_super) {
         if (!this._mouseZoneManager) {
             return;
         }
-        if (!this._rowsToLinkify.start) {
+        if (this._rowsToLinkify.start === null) {
             this._rowsToLinkify.start = start;
             this._rowsToLinkify.end = end;
         }
         else {
-            this._rowsToLinkify.start = this._rowsToLinkify.start < start ? this._rowsToLinkify.start : start;
-            this._rowsToLinkify.end = this._rowsToLinkify.end > end ? this._rowsToLinkify.end : end;
+            this._rowsToLinkify.start = Math.min(this._rowsToLinkify.start, start);
+            this._rowsToLinkify.end = Math.max(this._rowsToLinkify.end, end);
         }
         this._mouseZoneManager.clearAll(start, end);
         if (this._rowsTimeoutId) {
@@ -2062,23 +2066,30 @@ var Parser = (function () {
                             this._position--;
                             break;
                         case 'N':
+                            this._state = ParserState.NORMAL;
                             break;
                         case 'O':
+                            this._state = ParserState.NORMAL;
                             break;
                         case 'n':
                             this._terminal.setgLevel(2);
+                            this._state = ParserState.NORMAL;
                             break;
                         case 'o':
                             this._terminal.setgLevel(3);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '|':
                             this._terminal.setgLevel(3);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '}':
                             this._terminal.setgLevel(2);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '~':
                             this._terminal.setgLevel(1);
+                            this._state = ParserState.NORMAL;
                             break;
                         case '7':
                             this._inputHandler.saveCursor();
@@ -2364,10 +2375,9 @@ var SelectionMode;
 })(SelectionMode || (SelectionMode = {}));
 var SelectionManager = (function (_super) {
     __extends(SelectionManager, _super);
-    function SelectionManager(_terminal, _buffer, _charMeasure) {
+    function SelectionManager(_terminal, _charMeasure) {
         var _this = _super.call(this) || this;
         _this._terminal = _terminal;
-        _this._buffer = _buffer;
         _this._charMeasure = _charMeasure;
         _this._enabled = true;
         _this._initListeners();
@@ -2376,11 +2386,24 @@ var SelectionManager = (function (_super) {
         _this._activeSelectionMode = SelectionMode.NORMAL;
         return _this;
     }
+    Object.defineProperty(SelectionManager.prototype, "_buffer", {
+        get: function () {
+            return this._terminal.buffers.active;
+        },
+        enumerable: true,
+        configurable: true
+    });
     SelectionManager.prototype._initListeners = function () {
         var _this = this;
         this._mouseMoveListener = function (event) { return _this._onMouseMove(event); };
         this._mouseUpListener = function (event) { return _this._onMouseUp(event); };
-        this._buffer.lines.on('trim', function (amount) { return _this._onTrim(amount); });
+        this._trimListener = function (amount) { return _this._onTrim(amount); };
+        this.initBuffersListeners();
+    };
+    SelectionManager.prototype.initBuffersListeners = function () {
+        var _this = this;
+        this._terminal.buffer.lines.on('trim', this._trimListener);
+        this._terminal.buffers.on('activate', function (e) { return _this._onBufferActivate(e); });
     };
     SelectionManager.prototype.disable = function () {
         this.clearSelection();
@@ -2388,10 +2411,6 @@ var SelectionManager = (function (_super) {
     };
     SelectionManager.prototype.enable = function () {
         this._enabled = true;
-    };
-    SelectionManager.prototype.setBuffer = function (buffer) {
-        this._buffer = buffer;
-        this.clearSelection();
     };
     Object.defineProperty(SelectionManager.prototype, "selectionStart", {
         get: function () { return this._model.finalSelectionStart; },
@@ -2637,7 +2656,7 @@ var SelectionManager = (function (_super) {
         if (this._dragScrollAmount) {
             this._terminal.scrollLines(this._dragScrollAmount, false);
             if (this._dragScrollAmount > 0) {
-                this._model.selectionEnd = [this._terminal.cols - 1, this._terminal.buffer.ydisp + this._terminal.rows];
+                this._model.selectionEnd = [this._terminal.cols - 1, Math.min(this._terminal.buffer.ydisp + this._terminal.rows, this._terminal.buffer.lines.length - 1)];
             }
             else {
                 this._model.selectionEnd = [0, this._terminal.buffer.ydisp];
@@ -2649,6 +2668,11 @@ var SelectionManager = (function (_super) {
         this._removeMouseDownListeners();
         if (this.hasSelection)
             this._terminal.emit('selection');
+    };
+    SelectionManager.prototype._onBufferActivate = function (e) {
+        this.clearSelection();
+        e.inactiveBuffer.lines.off('trim', this._trimListener);
+        e.activeBuffer.lines.on('trim', this._trimListener);
     };
     SelectionManager.prototype._convertViewportColToCharacterIndex = function (bufferLine, coords) {
         var charIndex = coords[0];
@@ -2895,7 +2919,7 @@ var DEFAULT_OPTIONS = {
     termName: 'xterm',
     cursorBlink: false,
     cursorStyle: 'block',
-    bellSound: Sounds_1.BellSound,
+    bellSound: Sounds_1.BELL_SOUND,
     bellStyle: 'none',
     enableBold: true,
     fontFamily: 'courier-new, courier, monospace',
@@ -2905,6 +2929,7 @@ var DEFAULT_OPTIONS = {
     scrollback: 1000,
     screenKeys: false,
     debug: false,
+    macOptionIsMeta: false,
     cancelEvents: false,
     disableStdin: false,
     useFlowControl: false,
@@ -2961,7 +2986,7 @@ var Terminal = (function (_super) {
         this.writeInProgress = false;
         this.xoffSentToCatchUp = false;
         this.writeStopped = false;
-        this.surrogate_high = '';
+        this.surrogateHigh = '';
         this.userScrolling = false;
         this.inputHandler = new InputHandler_1.InputHandler(this);
         this.parser = new Parser_1.Parser(this.inputHandler, this);
@@ -2970,14 +2995,18 @@ var Terminal = (function (_super) {
         this.linkifier = this.linkifier || new Linkifier_1.Linkifier(this);
         this._mouseZoneManager = this._mouseZoneManager || null;
         this.buffers = new BufferSet_1.BufferSet(this);
-        this.buffer = this.buffers.active;
-        this.buffers.on('activate', function (buffer) {
-            _this.buffer = buffer;
-        });
         if (this.selectionManager) {
-            this.selectionManager.setBuffer(this.buffer);
+            this.selectionManager.clearSelection();
+            this.selectionManager.initBuffersListeners();
         }
     };
+    Object.defineProperty(Terminal.prototype, "buffer", {
+        get: function () {
+            return this.buffers.active;
+        },
+        enumerable: true,
+        configurable: true
+    });
     Terminal.prototype.eraseAttr = function () {
         return (this.defAttr & ~0x1ff) | (this.curAttr & 0x1ff);
     };
@@ -3093,7 +3122,6 @@ var Terminal = (function (_super) {
         this.showCursor();
         this.emit('focus');
     };
-    ;
     Terminal.prototype.blur = function () {
         return this.textarea.blur();
     };
@@ -3226,10 +3254,9 @@ var Terminal = (function (_super) {
         this.on('resize', function () { return _this.renderer.onResize(_this.cols, _this.rows, false); });
         this.on('blur', function () { return _this.renderer.onBlur(); });
         this.on('focus', function () { return _this.renderer.onFocus(); });
-        window.addEventListener('resize', function () { return _this.renderer.onWindowResize(window.devicePixelRatio); });
         this.charMeasure.on('charsizechanged', function () { return _this.renderer.onResize(_this.cols, _this.rows, true); });
         this.renderer.on('resize', function (dimensions) { return _this.viewport.syncScrollArea(); });
-        this.selectionManager = new SelectionManager_1.SelectionManager(this, this.buffer, this.charMeasure);
+        this.selectionManager = new SelectionManager_1.SelectionManager(this, this.charMeasure);
         this.element.addEventListener('mousedown', function (e) { return _this.selectionManager.onMouseDown(e); });
         this.selectionManager.on('refresh', function (data) { return _this.renderer.onSelectionChanged(data.start, data.end); });
         this.selectionManager.on('newselection', function (text) {
@@ -3683,7 +3710,7 @@ var Terminal = (function (_super) {
             this.scrollLines(result.scrollLines);
             return this.cancel(ev, true);
         }
-        if (isThirdLevelShift(this.browser, ev)) {
+        if (this._isThirdLevelShift(this.browser, ev)) {
             return true;
         }
         if (result.cancel) {
@@ -3697,6 +3724,14 @@ var Terminal = (function (_super) {
         this.showCursor();
         this.handler(result.key);
         return this.cancel(ev, true);
+    };
+    Terminal.prototype._isThirdLevelShift = function (browser, ev) {
+        var thirdLevelKey = (browser.isMac && !this.options.macOptionIsMeta && ev.altKey && !ev.ctrlKey && !ev.metaKey) ||
+            (browser.isMSWindows && ev.altKey && ev.ctrlKey && !ev.metaKey);
+        if (ev.type === 'keypress') {
+            return thirdLevelKey;
+        }
+        return thirdLevelKey && (!ev.keyCode || ev.keyCode > 47);
     };
     Terminal.prototype._evaluateKeyEscapeSequence = function (ev) {
         var result = {
@@ -3743,6 +3778,10 @@ var Terminal = (function (_super) {
             case 8:
                 if (ev.shiftKey) {
                     result.key = EscapeSequences_1.C0.BS;
+                    break;
+                }
+                else if (ev.altKey) {
+                    result.key = EscapeSequences_1.C0.ESC + EscapeSequences_1.C0.DEL;
                     break;
                 }
                 result.key = EscapeSequences_1.C0.DEL;
@@ -3852,6 +3891,9 @@ var Terminal = (function (_super) {
                 if (ev.shiftKey) {
                     result.scrollLines = -(this.rows - 1);
                 }
+                else if (modifiers) {
+                    result.key = EscapeSequences_1.C0.ESC + '[5;' + (modifiers + 1) + '~';
+                }
                 else {
                     result.key = EscapeSequences_1.C0.ESC + '[5~';
                 }
@@ -3859,6 +3901,9 @@ var Terminal = (function (_super) {
             case 34:
                 if (ev.shiftKey) {
                     result.scrollLines = this.rows - 1;
+                }
+                else if (modifiers) {
+                    result.key = EscapeSequences_1.C0.ESC + '[6;' + (modifiers + 1) + '~';
                 }
                 else {
                     result.key = EscapeSequences_1.C0.ESC + '[6~';
@@ -3984,7 +4029,7 @@ var Terminal = (function (_super) {
                         result.key = String.fromCharCode(29);
                     }
                 }
-                else if (!this.browser.isMac && ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+                else if ((!this.browser.isMac || this.options.macOptionIsMeta) && ev.altKey && !ev.ctrlKey && !ev.metaKey) {
                     if (ev.keyCode >= 65 && ev.keyCode <= 90) {
                         result.key = EscapeSequences_1.C0.ESC + String.fromCharCode(ev.keyCode + 32);
                     }
@@ -4032,7 +4077,7 @@ var Terminal = (function (_super) {
         else {
             return false;
         }
-        if (!key || ((ev.altKey || ev.ctrlKey || ev.metaKey) && !isThirdLevelShift(this.browser, ev))) {
+        if (!key || ((ev.altKey || ev.ctrlKey || ev.metaKey) && !this._isThirdLevelShift(this.browser, ev))) {
             return false;
         }
         key = String.fromCharCode(key);
@@ -4216,11 +4261,9 @@ var Terminal = (function (_super) {
         this.options.cols = this.cols;
         var customKeyEventHandler = this.customKeyEventHandler;
         var inputHandler = this.inputHandler;
-        var buffers = this.buffers;
         this.setup();
         this.customKeyEventHandler = customKeyEventHandler;
         this.inputHandler = inputHandler;
-        this.buffers = buffers;
         this.refresh(0, this.rows - 1);
         this.viewport.syncScrollArea();
     };
@@ -4279,14 +4322,6 @@ function off(el, type, handler, capture) {
     if (capture === void 0) { capture = false; }
     el.removeEventListener(type, handler, capture);
 }
-function isThirdLevelShift(browser, ev) {
-    var thirdLevelKey = (browser.isMac && ev.altKey && !ev.ctrlKey && !ev.metaKey) ||
-        (browser.isMSWindows && ev.altKey && ev.ctrlKey && !ev.metaKey);
-    if (ev.type === 'keypress') {
-        return thirdLevelKey;
-    }
-    return thirdLevelKey && (!ev.keyCode || ev.keyCode > 47);
-}
 function wasMondifierKeyOnlyEvent(ev) {
     return ev.keyCode === 16 ||
         ev.keyCode === 17 ||
@@ -4322,7 +4357,6 @@ function matchColorDistance(r1, g1, b1, r2, g2, b2) {
         + Math.pow(59 * (g1 - g2), 2)
         + Math.pow(11 * (b1 - b2), 2);
 }
-;
 function matchColor_(r1, g1, b1) {
     var hash = (r1 << 16) | (g1 << 8) | b1;
     if (matchColorCache[hash] != null) {
@@ -4356,7 +4390,7 @@ function matchColor_(r1, g1, b1) {
 
 
 
-},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/CharAtlas":19,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./utils/Browser":28,"./utils/CharMeasure":29,"./utils/MouseHelper":32,"./utils/Sounds":33}],14:[function(require,module,exports){
+},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/CharAtlas":19,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./utils/Browser":28,"./utils/CharMeasure":29,"./utils/MouseHelper":32,"./utils/Sounds":34}],14:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var LinkHoverEventTypes;
@@ -4365,7 +4399,6 @@ var LinkHoverEventTypes;
     LinkHoverEventTypes["TOOLTIP"] = "linktooltip";
     LinkHoverEventTypes["LEAVE"] = "linkleave";
 })(LinkHoverEventTypes = exports.LinkHoverEventTypes || (exports.LinkHoverEventTypes = {}));
-;
 
 
 
@@ -4440,11 +4473,9 @@ var Viewport = (function () {
         this.viewportElement.scrollTop += ev.deltaY * multiplier;
         ev.preventDefault();
     };
-    ;
     Viewport.prototype.onTouchStart = function (ev) {
         this.lastTouchY = ev.touches[0].pageY;
     };
-    ;
     Viewport.prototype.onTouchMove = function (ev) {
         var deltaY = this.lastTouchY - ev.touches[0].pageY;
         this.lastTouchY = ev.touches[0].pageY;
@@ -4454,7 +4485,6 @@ var Viewport = (function () {
         this.viewportElement.scrollTop += deltaY;
         ev.preventDefault();
     };
-    ;
     return Viewport;
 }());
 exports.Viewport = Viewport;
@@ -4663,7 +4693,6 @@ var MouseZoneManager = (function () {
                 return zone;
             }
         }
-        ;
         return null;
     };
     return MouseZoneManager;
@@ -5211,6 +5240,9 @@ var CursorRenderLayer = (function (_super) {
         if (!this._cursorBlinkStateManager || this._cursorBlinkStateManager.isPaused) {
             this._render(terminal, false);
         }
+        else {
+            this._cursorBlinkStateManager.restartBlinkAnimation(terminal);
+        }
     };
     CursorRenderLayer.prototype._render = function (terminal, triggeredByAnimationFrame) {
         if (!terminal.cursorState || terminal.cursorHidden) {
@@ -5507,6 +5539,7 @@ var CursorRenderLayer_1 = require("./CursorRenderLayer");
 var ColorManager_1 = require("./ColorManager");
 var LinkRenderLayer_1 = require("./LinkRenderLayer");
 var EventEmitter_1 = require("../EventEmitter");
+var ScreenDprMonitor_1 = require("../utils/ScreenDprMonitor");
 var Renderer = (function (_super) {
     __extends(Renderer, _super);
     function Renderer(_terminal, theme) {
@@ -5514,6 +5547,8 @@ var Renderer = (function (_super) {
         _this._terminal = _terminal;
         _this._refreshRowsQueue = [];
         _this._refreshAnimationFrame = null;
+        _this._isPaused = false;
+        _this._needsFullRefresh = false;
         _this.colorManager = new ColorManager_1.ColorManager();
         if (theme) {
             _this.colorManager.setTheme(theme);
@@ -5541,8 +5576,20 @@ var Renderer = (function (_super) {
         _this._devicePixelRatio = window.devicePixelRatio;
         _this._updateDimensions();
         _this.onOptionsChanged();
+        _this._screenDprMonitor = new ScreenDprMonitor_1.ScreenDprMonitor();
+        _this._screenDprMonitor.setListener(function () { return _this.onWindowResize(window.devicePixelRatio); });
+        if ('IntersectionObserver' in window) {
+            var observer = new IntersectionObserver(function (e) { return _this.onIntersectionChange(e[0]); }, { threshold: 0 });
+            observer.observe(_this._terminal.element);
+        }
         return _this;
     }
+    Renderer.prototype.onIntersectionChange = function (entry) {
+        this._isPaused = entry.intersectionRatio === 0;
+        if (!this._isPaused && this._needsFullRefresh) {
+            this._terminal.refresh(0, this._terminal.rows - 1);
+        }
+    };
     Renderer.prototype.onWindowResize = function (devicePixelRatio) {
         if (this._devicePixelRatio !== devicePixelRatio) {
             this._devicePixelRatio = devicePixelRatio;
@@ -5556,14 +5603,24 @@ var Renderer = (function (_super) {
             l.onThemeChanged(_this._terminal, _this.colorManager.colors);
             l.reset(_this._terminal);
         });
-        this._terminal.refresh(0, this._terminal.rows - 1);
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+        }
+        else {
+            this._terminal.refresh(0, this._terminal.rows - 1);
+        }
         return this.colorManager.colors;
     };
     Renderer.prototype.onResize = function (cols, rows, didCharSizeChange) {
         var _this = this;
         this._updateDimensions();
         this._renderLayers.forEach(function (l) { return l.resize(_this._terminal, _this.dimensions, didCharSizeChange); });
-        this._terminal.refresh(0, this._terminal.rows - 1);
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+        }
+        else {
+            this._terminal.refresh(0, this._terminal.rows - 1);
+        }
         this.emit('resize', {
             width: this.dimensions.canvasWidth,
             height: this.dimensions.canvasHeight
@@ -5574,29 +5631,41 @@ var Renderer = (function (_super) {
     };
     Renderer.prototype.onBlur = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onBlur(_this._terminal); });
+        this._runOperation(function (l) { return l.onBlur(_this._terminal); });
     };
     Renderer.prototype.onFocus = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onFocus(_this._terminal); });
+        this._runOperation(function (l) { return l.onFocus(_this._terminal); });
     };
     Renderer.prototype.onSelectionChanged = function (start, end) {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onSelectionChanged(_this._terminal, start, end); });
+        this._runOperation(function (l) { return l.onSelectionChanged(_this._terminal, start, end); });
     };
     Renderer.prototype.onCursorMove = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onCursorMove(_this._terminal); });
+        this._runOperation(function (l) { return l.onCursorMove(_this._terminal); });
     };
     Renderer.prototype.onOptionsChanged = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.onOptionsChanged(_this._terminal); });
+        this._runOperation(function (l) { return l.onOptionsChanged(_this._terminal); });
     };
     Renderer.prototype.clear = function () {
         var _this = this;
-        this._renderLayers.forEach(function (l) { return l.reset(_this._terminal); });
+        this._runOperation(function (l) { return l.reset(_this._terminal); });
+    };
+    Renderer.prototype._runOperation = function (operation) {
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+        }
+        else {
+            this._renderLayers.forEach(function (l) { return operation(l); });
+        }
     };
     Renderer.prototype.queueRefresh = function (start, end) {
+        if (this._isPaused) {
+            this._needsFullRefresh = true;
+            return;
+        }
         this._refreshRowsQueue.push({ start: start, end: end });
         if (!this._refreshAnimationFrame) {
             this._refreshAnimationFrame = window.requestAnimationFrame(this._refreshLoop.bind(this));
@@ -5652,7 +5721,7 @@ exports.Renderer = Renderer;
 
 
 
-},{"../EventEmitter":7,"./ColorManager":20,"./CursorRenderLayer":21,"./LinkRenderLayer":23,"./SelectionRenderLayer":25,"./TextRenderLayer":26}],25:[function(require,module,exports){
+},{"../EventEmitter":7,"../utils/ScreenDprMonitor":33,"./ColorManager":20,"./CursorRenderLayer":21,"./LinkRenderLayer":23,"./SelectionRenderLayer":25,"./TextRenderLayer":26}],25:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5894,7 +5963,6 @@ var FLAGS;
     FLAGS[FLAGS["INVISIBLE"] = 16] = "INVISIBLE";
     FLAGS[FLAGS["DIM"] = 32] = "DIM";
 })(FLAGS = exports.FLAGS || (exports.FLAGS = {}));
-;
 
 
 
@@ -6155,7 +6223,6 @@ function contains(arr, el) {
     return arr.indexOf(el) >= 0;
 }
 exports.contains = contains;
-;
 
 
 
@@ -6217,11 +6284,51 @@ exports.MouseHelper = MouseHelper;
 },{}],33:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BellSound = 'data:audio/wav;base64,UklGRigBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQBAADpAFgCwAMlBZoG/wdmCcoKRAypDQ8PbRDBEQQTOxRtFYcWlBePGIUZXhoiG88bcBz7HHIdzh0WHlMeZx51HmkeUx4WHs8dah0AHXwc3hs9G4saxRnyGBIYGBcQFv8U4RPAEoYRQBACD70NWwwHC6gJOwjWBloF7gOBAhABkf8b/qv8R/ve+Xf4Ife79W/0JfPZ8Z/wde9N7ijtE+wU6xvqM+lb6H7nw+YX5mrlxuQz5Mzje+Ma49fioeKD4nXiYeJy4pHitOL04j/jn+MN5IPkFOWs5U3mDefM55/ogOl36m7rdOyE7abuyu8D8Unyj/Pg9D/2qfcb+Yn6/vuK/Qj/lAAlAg==';
+var ScreenDprMonitor = (function () {
+    function ScreenDprMonitor() {
+    }
+    ScreenDprMonitor.prototype.setListener = function (listener) {
+        var _this = this;
+        if (this._listener) {
+            this.clearListener();
+        }
+        this._listener = listener;
+        this._outerListener = function () {
+            _this._listener(window.devicePixelRatio, _this._currentDevicePixelRatio);
+            _this._updateDpr();
+        };
+        this._updateDpr();
+    };
+    ScreenDprMonitor.prototype._updateDpr = function () {
+        if (this._resolutionMediaMatchList) {
+            this._resolutionMediaMatchList.removeListener(this._outerListener);
+        }
+        this._currentDevicePixelRatio = window.devicePixelRatio;
+        this._resolutionMediaMatchList = window.matchMedia("screen and (resolution: " + window.devicePixelRatio + "dppx)");
+        this._resolutionMediaMatchList.addListener(this._outerListener);
+    };
+    ScreenDprMonitor.prototype.clearListener = function () {
+        if (!this._listener) {
+            return;
+        }
+        this._resolutionMediaMatchList.removeListener(this._outerListener);
+        this._listener = null;
+        this._outerListener = null;
+    };
+    return ScreenDprMonitor;
+}());
+exports.ScreenDprMonitor = ScreenDprMonitor;
 
 
 
 },{}],34:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BELL_SOUND = 'data:audio/wav;base64,UklGRigBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQBAADpAFgCwAMlBZoG/wdmCcoKRAypDQ8PbRDBEQQTOxRtFYcWlBePGIUZXhoiG88bcBz7HHIdzh0WHlMeZx51HmkeUx4WHs8dah0AHXwc3hs9G4saxRnyGBIYGBcQFv8U4RPAEoYRQBACD70NWwwHC6gJOwjWBloF7gOBAhABkf8b/qv8R/ve+Xf4Ife79W/0JfPZ8Z/wde9N7ijtE+wU6xvqM+lb6H7nw+YX5mrlxuQz5Mzje+Ma49fioeKD4nXiYeJy4pHitOL04j/jn+MN5IPkFOWs5U3mDefM55/ogOl36m7rdOyE7abuyu8D8Unyj/Pg9D/2qfcb+Yn6/vuK/Qj/lAAlAg==';
+
+
+
+},{}],35:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Terminal_1 = require("./Terminal");
@@ -6229,6 +6336,6 @@ module.exports = Terminal_1.Terminal;
 
 
 
-},{"./Terminal":13}]},{},[34])(34)
+},{"./Terminal":13}]},{},[35])(35)
 });
 //# sourceMappingURL=xterm.js.map
