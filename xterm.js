@@ -114,15 +114,13 @@ var Buffer = (function () {
                 }
                 this._lines.maxLength = newMaxLength;
             }
-            if (this.y >= newRows) {
-                this.y = newRows - 1;
-            }
+            this.x = Math.min(this.x, newCols - 1);
+            this.y = Math.min(this.y, newRows - 1);
             if (addToY) {
                 this.y += addToY;
             }
-            if (this.x >= newCols) {
-                this.x = newCols - 1;
-            }
+            this.savedY = Math.min(this.savedY, newRows - 1);
+            this.savedX = Math.min(this.savedX, newCols - 1);
             this.scrollTop = 0;
         }
         this.scrollBottom = newRows - 1;
@@ -207,7 +205,7 @@ exports.Buffer = Buffer;
 
 
 
-},{"./utils/CircularList":30}],2:[function(require,module,exports){
+},{"./utils/CircularList":31}],2:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -780,7 +778,7 @@ var EventEmitter = (function () {
         var obj = this._events[type];
         var i = obj.length;
         while (i--) {
-            if (obj[i] === listener || obj[i].listener === listener) {
+            if (obj[i] === listener) {
                 obj.splice(i, 1);
                 return;
             }
@@ -790,15 +788,6 @@ var EventEmitter = (function () {
         if (this._events[type]) {
             delete this._events[type];
         }
-    };
-    EventEmitter.prototype.once = function (type, listener) {
-        function on() {
-            var args = Array.prototype.slice.call(arguments);
-            this.off(type, on);
-            listener.apply(this, args);
-        }
-        on.listener = listener;
-        this.on(type, on);
     };
     EventEmitter.prototype.emit = function (type) {
         var args = [];
@@ -2357,7 +2346,7 @@ var __extends = (this && this.__extends) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 var MouseHelper_1 = require("./utils/MouseHelper");
-var Browser = require("./utils/Browser");
+var Browser = require("./shared/utils/Browser");
 var EventEmitter_1 = require("./EventEmitter");
 var SelectionModel_1 = require("./SelectionModel");
 var Buffer_1 = require("./Buffer");
@@ -2799,7 +2788,7 @@ exports.SelectionManager = SelectionManager;
 
 
 
-},{"./Buffer":1,"./EventEmitter":7,"./SelectionModel":12,"./utils/Browser":28,"./utils/MouseHelper":32}],12:[function(require,module,exports){
+},{"./Buffer":1,"./EventEmitter":7,"./SelectionModel":12,"./shared/utils/Browser":29,"./utils/MouseHelper":32}],12:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var SelectionModel = (function () {
@@ -2903,12 +2892,11 @@ var Renderer_1 = require("./renderer/Renderer");
 var Linkifier_1 = require("./Linkifier");
 var SelectionManager_1 = require("./SelectionManager");
 var CharMeasure_1 = require("./utils/CharMeasure");
-var Browser = require("./utils/Browser");
+var Browser = require("./shared/utils/Browser");
 var MouseHelper_1 = require("./utils/MouseHelper");
 var Sounds_1 = require("./utils/Sounds");
 var ColorManager_1 = require("./renderer/ColorManager");
 var MouseZoneManager_1 = require("./input/MouseZoneManager");
-var CharAtlas_1 = require("./renderer/CharAtlas");
 var document = (typeof window !== 'undefined') ? window.document : null;
 var WRITE_BUFFER_PAUSE_THRESHOLD = 5;
 var WRITE_BATCH_SIZE = 300;
@@ -2924,6 +2912,8 @@ var DEFAULT_OPTIONS = {
     enableBold: true,
     fontFamily: 'courier-new, courier, monospace',
     fontSize: 15,
+    fontWeight: 'normal',
+    fontWeightBold: 'bold',
     lineHeight: 1.0,
     letterSpacing: 0,
     scrollback: 1000,
@@ -3046,6 +3036,16 @@ var Terminal = (function (_super) {
                     value = 'block';
                 }
                 break;
+            case 'fontWeight':
+                if (!value) {
+                    value = 'normal';
+                }
+                break;
+            case 'fontWeightBold':
+                if (!value) {
+                    value = 'bold';
+                }
+                break;
             case 'lineHeight':
                 if (value < 1) {
                     console.warn(key + " cannot be less than 1, value: " + value);
@@ -3095,8 +3095,11 @@ var Terminal = (function (_super) {
             case 'enableBold':
             case 'letterSpacing':
             case 'lineHeight':
+            case 'fontWeight':
+            case 'fontWeightBold':
+                var didCharSizeChange = (key === 'fontWeight' || key === 'fontWeightBold' || key === 'enableBold');
                 this.renderer.clear();
-                this.renderer.onResize(this.cols, this.rows, false);
+                this.renderer.onResize(this.cols, this.rows, didCharSizeChange);
                 this.refresh(0, this.rows - 1);
             case 'scrollback':
                 this.buffers.resize(this.cols, this.rows);
@@ -3209,7 +3212,6 @@ var Terminal = (function (_super) {
         this.context = this.parent.ownerDocument.defaultView;
         this.document = this.parent.ownerDocument;
         this.body = this.document.body;
-        CharAtlas_1.initialize(this.document);
         this.element = this.document.createElement('div');
         this.element.classList.add('terminal');
         this.element.classList.add('xterm');
@@ -4282,12 +4284,10 @@ var Terminal = (function (_super) {
         return matchColor_(r1, g1, b1);
     };
     Terminal.prototype.visualBell = function () {
-        return this.options.bellStyle === 'visual' ||
-            this.options.bellStyle === 'both';
+        return false;
     };
     Terminal.prototype.soundBell = function () {
-        return this.options.bellStyle === 'sound' ||
-            this.options.bellStyle === 'both';
+        return this.options.bellStyle === 'sound';
     };
     Terminal.prototype.syncBellSound = function () {
         if (!this.element) {
@@ -4390,7 +4390,7 @@ function matchColor_(r1, g1, b1) {
 
 
 
-},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/CharAtlas":19,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./utils/Browser":28,"./utils/CharMeasure":29,"./utils/MouseHelper":32,"./utils/Sounds":34}],14:[function(require,module,exports){
+},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./shared/utils/Browser":29,"./utils/CharMeasure":30,"./utils/MouseHelper":32,"./utils/Sounds":34}],14:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var LinkHoverEventTypes;
@@ -4815,7 +4815,7 @@ var BaseRenderLayer = (function () {
         }
     };
     BaseRenderLayer.prototype.fillCharTrueColor = function (terminal, charData, x, y) {
-        this._ctx.font = terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
+        this._ctx.font = this._getFont(terminal, false);
         this._ctx.textBaseline = 'top';
         this._clipRow(terminal, y);
         this._ctx.fillText(charData[Buffer_1.CHAR_DATA_CHAR_INDEX], x * this._scaledCellWidth + this._scaledCharLeft, y * this._scaledCellHeight + this._scaledCharTop);
@@ -4848,15 +4848,12 @@ var BaseRenderLayer = (function () {
             this._ctx.drawImage(this._charAtlas, code * charAtlasCellWidth, colorIndex * charAtlasCellHeight, charAtlasCellWidth, this._scaledCharHeight, x * this._scaledCellWidth + this._scaledCharLeft, y * this._scaledCellHeight + this._scaledCharTop, charAtlasCellWidth, this._scaledCharHeight);
         }
         else {
-            this._drawUncachedChar(terminal, char, width, fg, x, y, bold, dim);
+            this._drawUncachedChar(terminal, char, width, fg, x, y, bold && terminal.options.enableBold, dim);
         }
     };
     BaseRenderLayer.prototype._drawUncachedChar = function (terminal, char, width, fg, x, y, bold, dim) {
         this._ctx.save();
-        this._ctx.font = terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
-        if (bold && terminal.options.enableBold) {
-            this._ctx.font = "bold " + this._ctx.font;
-        }
+        this._ctx.font = this._getFont(terminal, bold);
         this._ctx.textBaseline = 'top';
         if (fg === exports.INVERTED_DEFAULT_COLOR) {
             this._ctx.fillStyle = this._colors.background;
@@ -4879,6 +4876,10 @@ var BaseRenderLayer = (function () {
         this._ctx.rect(0, y * this._scaledCellHeight, terminal.cols * this._scaledCellWidth, this._scaledCellHeight);
         this._ctx.clip();
     };
+    BaseRenderLayer.prototype._getFont = function (terminal, isBold) {
+        var fontWeight = isBold ? terminal.options.fontWeightBold : terminal.options.fontWeight;
+        return fontWeight + " " + terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
+    };
     return BaseRenderLayer;
 }());
 exports.BaseRenderLayer = BaseRenderLayer;
@@ -4888,7 +4889,7 @@ exports.BaseRenderLayer = BaseRenderLayer;
 },{"../Buffer":1,"./CharAtlas":19}],19:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var Browser_1 = require("../utils/Browser");
+var CharAtlasGenerator_1 = require("../shared/CharAtlasGenerator");
 exports.CHAR_ATLAS_CELL_SPACING = 1;
 var charAtlasCache = [];
 function acquireCharAtlas(terminal, colors, scaledCharWidth, scaledCharHeight) {
@@ -4918,8 +4919,26 @@ function acquireCharAtlas(terminal, colors, scaledCharWidth, scaledCharHeight) {
             return entry.bitmap;
         }
     }
+    var canvasFactory = function (width, height) {
+        var canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        return canvas;
+    };
+    var charAtlasConfig = {
+        scaledCharWidth: scaledCharWidth,
+        scaledCharHeight: scaledCharHeight,
+        fontSize: terminal.options.fontSize,
+        fontFamily: terminal.options.fontFamily,
+        fontWeight: terminal.options.fontWeight,
+        fontWeightBold: terminal.options.fontWeightBold,
+        background: colors.background,
+        foreground: colors.foreground,
+        ansiColors: colors.ansi,
+        devicePixelRatio: window.devicePixelRatio
+    };
     var newEntry = {
-        bitmap: generator.generate(scaledCharWidth, scaledCharHeight, terminal.options.fontSize, terminal.options.fontFamily, colors.background, colors.foreground, colors.ansi),
+        bitmap: CharAtlasGenerator_1.generateCharAtlas(window, canvasFactory, charAtlasConfig),
         config: newConfig,
         ownedBy: [terminal]
     };
@@ -4941,6 +4960,8 @@ function generateConfig(scaledCharWidth, scaledCharHeight, terminal, colors) {
         scaledCharHeight: scaledCharHeight,
         fontFamily: terminal.options.fontFamily,
         fontSize: terminal.options.fontSize,
+        fontWeight: terminal.options.fontWeight,
+        fontWeightBold: terminal.options.fontWeightBold,
         colors: clonedColors
     };
 }
@@ -4952,103 +4973,17 @@ function configEquals(a, b) {
     }
     return a.fontFamily === b.fontFamily &&
         a.fontSize === b.fontSize &&
+        a.fontWeight === b.fontWeight &&
+        a.fontWeightBold === b.fontWeightBold &&
         a.scaledCharWidth === b.scaledCharWidth &&
         a.scaledCharHeight === b.scaledCharHeight &&
         a.colors.foreground === b.colors.foreground &&
         a.colors.background === b.colors.background;
 }
-var generator;
-function initialize(document) {
-    if (!generator) {
-        generator = new CharAtlasGenerator(document);
-    }
-}
-exports.initialize = initialize;
-var CharAtlasGenerator = (function () {
-    function CharAtlasGenerator(_document) {
-        this._document = _document;
-        this._canvas = this._document.createElement('canvas');
-        this._ctx = this._canvas.getContext('2d', { alpha: false });
-        this._ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-    }
-    CharAtlasGenerator.prototype.generate = function (scaledCharWidth, scaledCharHeight, fontSize, fontFamily, background, foreground, ansiColors) {
-        var cellWidth = scaledCharWidth + exports.CHAR_ATLAS_CELL_SPACING;
-        var cellHeight = scaledCharHeight + exports.CHAR_ATLAS_CELL_SPACING;
-        this._canvas.width = 255 * cellWidth;
-        this._canvas.height = (2 + 16) * cellHeight;
-        this._ctx.fillStyle = background;
-        this._ctx.fillRect(0, 0, this._canvas.width, this._canvas.height);
-        this._ctx.save();
-        this._ctx.fillStyle = foreground;
-        this._ctx.font = fontSize * window.devicePixelRatio + "px " + fontFamily;
-        this._ctx.textBaseline = 'top';
-        for (var i = 0; i < 256; i++) {
-            this._ctx.save();
-            this._ctx.beginPath();
-            this._ctx.rect(i * cellWidth, 0, cellWidth, cellHeight);
-            this._ctx.clip();
-            this._ctx.fillText(String.fromCharCode(i), i * cellWidth, 0);
-            this._ctx.restore();
-        }
-        this._ctx.save();
-        this._ctx.font = "bold " + this._ctx.font;
-        for (var i = 0; i < 256; i++) {
-            this._ctx.save();
-            this._ctx.beginPath();
-            this._ctx.rect(i * cellWidth, cellHeight, cellWidth, cellHeight);
-            this._ctx.clip();
-            this._ctx.fillText(String.fromCharCode(i), i * cellWidth, cellHeight);
-            this._ctx.restore();
-        }
-        this._ctx.restore();
-        this._ctx.font = fontSize * window.devicePixelRatio + "px " + fontFamily;
-        for (var colorIndex = 0; colorIndex < 16; colorIndex++) {
-            if (colorIndex === 8) {
-                this._ctx.font = "bold " + this._ctx.font;
-            }
-            var y = (colorIndex + 2) * cellHeight;
-            for (var i = 0; i < 256; i++) {
-                this._ctx.save();
-                this._ctx.beginPath();
-                this._ctx.rect(i * cellWidth, y, cellWidth, cellHeight);
-                this._ctx.clip();
-                this._ctx.fillStyle = ansiColors[colorIndex];
-                this._ctx.fillText(String.fromCharCode(i), i * cellWidth, y);
-                this._ctx.restore();
-            }
-        }
-        this._ctx.restore();
-        if (!('createImageBitmap' in window) || Browser_1.isFirefox) {
-            var result = this._canvas;
-            this._canvas = this._document.createElement('canvas');
-            this._ctx = this._canvas.getContext('2d');
-            this._ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-            return result;
-        }
-        var charAtlasImageData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height);
-        var r = parseInt(background.substr(1, 2), 16);
-        var g = parseInt(background.substr(3, 2), 16);
-        var b = parseInt(background.substr(5, 2), 16);
-        this._clearColor(charAtlasImageData, r, g, b);
-        var promise = window.createImageBitmap(charAtlasImageData);
-        this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
-        return promise;
-    };
-    CharAtlasGenerator.prototype._clearColor = function (imageData, r, g, b) {
-        for (var offset = 0; offset < imageData.data.length; offset += 4) {
-            if (imageData.data[offset] === r &&
-                imageData.data[offset + 1] === g &&
-                imageData.data[offset + 2] === b) {
-                imageData.data[offset + 3] = 0;
-            }
-        }
-    };
-    return CharAtlasGenerator;
-}());
 
 
 
-},{"../utils/Browser":28}],20:[function(require,module,exports){
+},{"../shared/CharAtlasGenerator":28}],20:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var DEFAULT_FOREGROUND = '#ffffff';
@@ -5482,8 +5417,8 @@ var __extends = (this && this.__extends) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-var BaseRenderLayer_1 = require("./BaseRenderLayer");
 var Types_1 = require("../Types");
+var BaseRenderLayer_1 = require("./BaseRenderLayer");
 var LinkRenderLayer = (function (_super) {
     __extends(LinkRenderLayer, _super);
     function LinkRenderLayer(container, zIndex, colors, terminal) {
@@ -5823,7 +5758,7 @@ var TextRenderLayer = (function (_super) {
     }
     TextRenderLayer.prototype.resize = function (terminal, dim, charSizeChanged) {
         _super.prototype.resize.call(this, terminal, dim, charSizeChanged);
-        var terminalFont = terminal.options.fontSize * window.devicePixelRatio + "px " + terminal.options.fontFamily;
+        var terminalFont = this._getFont(terminal, false);
         if (this._characterWidth !== dim.scaledCharWidth || this._characterFont !== terminalFont) {
             this._characterWidth = dim.scaledCharWidth;
             this._characterFont = terminalFont;
@@ -5896,7 +5831,7 @@ var TextRenderLayer = (function (_super) {
                 }
                 this._ctx.save();
                 if (flags & Types_1.FLAGS.BOLD) {
-                    this._ctx.font = "bold " + this._ctx.font;
+                    this._ctx.font = this._getFont(terminal, true);
                     if (fg < 8) {
                         fg += 8;
                     }
@@ -5969,21 +5904,106 @@ var FLAGS;
 },{}],28:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var Generic_1 = require("./Generic");
+var Browser_1 = require("./utils/Browser");
+exports.CHAR_ATLAS_CELL_SPACING = 1;
+function generateCharAtlas(context, canvasFactory, request) {
+    var cellWidth = request.scaledCharWidth + exports.CHAR_ATLAS_CELL_SPACING;
+    var cellHeight = request.scaledCharHeight + exports.CHAR_ATLAS_CELL_SPACING;
+    var canvas = canvasFactory(255 * cellWidth, (2 + 16) * cellHeight);
+    var ctx = canvas.getContext('2d', { alpha: false });
+    ctx.fillStyle = request.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.fillStyle = request.foreground;
+    ctx.font = getFont(request.fontWeight, request);
+    ctx.textBaseline = 'top';
+    for (var i = 0; i < 256; i++) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(i * cellWidth, 0, cellWidth, cellHeight);
+        ctx.clip();
+        ctx.fillText(String.fromCharCode(i), i * cellWidth, 0);
+        ctx.restore();
+    }
+    ctx.save();
+    ctx.font = getFont(request.fontWeightBold, request);
+    for (var i = 0; i < 256; i++) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(i * cellWidth, cellHeight, cellWidth, cellHeight);
+        ctx.clip();
+        ctx.fillText(String.fromCharCode(i), i * cellWidth, cellHeight);
+        ctx.restore();
+    }
+    ctx.restore();
+    ctx.font = getFont(request.fontWeight, request);
+    for (var colorIndex = 0; colorIndex < 16; colorIndex++) {
+        if (colorIndex === 8) {
+            ctx.font = getFont(request.fontWeightBold, request);
+        }
+        var y = (colorIndex + 2) * cellHeight;
+        for (var i = 0; i < 256; i++) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(i * cellWidth, y, cellWidth, cellHeight);
+            ctx.clip();
+            ctx.fillStyle = request.ansiColors[colorIndex];
+            ctx.fillText(String.fromCharCode(i), i * cellWidth, y);
+            ctx.restore();
+        }
+    }
+    ctx.restore();
+    if (!('createImageBitmap' in context) || Browser_1.isFirefox) {
+        if (canvas instanceof HTMLCanvasElement) {
+            return canvas;
+        }
+        else {
+            return new Promise(function (r) { return r(canvas.transferToImageBitmap()); });
+        }
+    }
+    var charAtlasImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var r = parseInt(request.background.substr(1, 2), 16);
+    var g = parseInt(request.background.substr(3, 2), 16);
+    var b = parseInt(request.background.substr(5, 2), 16);
+    clearColor(charAtlasImageData, r, g, b);
+    return context.createImageBitmap(charAtlasImageData);
+}
+exports.generateCharAtlas = generateCharAtlas;
+function clearColor(imageData, r, g, b) {
+    for (var offset = 0; offset < imageData.data.length; offset += 4) {
+        if (imageData.data[offset] === r &&
+            imageData.data[offset + 1] === g &&
+            imageData.data[offset + 2] === b) {
+            imageData.data[offset + 3] = 0;
+        }
+    }
+}
+function getFont(fontWeight, request) {
+    return fontWeight + " " + request.fontSize * request.devicePixelRatio + "px " + request.fontFamily;
+}
+
+
+
+},{"./utils/Browser":29}],29:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 var isNode = (typeof navigator === 'undefined') ? true : false;
 var userAgent = (isNode) ? 'node' : navigator.userAgent;
 var platform = (isNode) ? 'node' : navigator.platform;
 exports.isFirefox = !!~userAgent.indexOf('Firefox');
 exports.isMSIE = !!~userAgent.indexOf('MSIE') || !!~userAgent.indexOf('Trident');
-exports.isMac = Generic_1.contains(['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'], platform);
+exports.isMac = contains(['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'], platform);
 exports.isIpad = platform === 'iPad';
 exports.isIphone = platform === 'iPhone';
-exports.isMSWindows = Generic_1.contains(['Windows', 'Win16', 'Win32', 'WinCE'], platform);
+exports.isMSWindows = contains(['Windows', 'Win16', 'Win32', 'WinCE'], platform);
 exports.isLinux = platform.indexOf('Linux') >= 0;
+function contains(arr, el) {
+    return arr.indexOf(el) >= 0;
+}
 
 
 
-},{"./Generic":31}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6046,7 +6066,7 @@ exports.CharMeasure = CharMeasure;
 
 
 
-},{"../EventEmitter":7}],30:[function(require,module,exports){
+},{"../EventEmitter":7}],31:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6216,17 +6236,7 @@ exports.CircularList = CircularList;
 
 
 
-},{"../EventEmitter":7}],31:[function(require,module,exports){
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-function contains(arr, el) {
-    return arr.indexOf(el) >= 0;
-}
-exports.contains = contains;
-
-
-
-},{}],32:[function(require,module,exports){
+},{"../EventEmitter":7}],32:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var MouseHelper = (function () {
@@ -6243,7 +6253,7 @@ var MouseHelper = (function () {
         while (element) {
             x -= element.offsetLeft;
             y -= element.offsetTop;
-            element = 'offsetParent' in element ? element.offsetParent : element.parentElement;
+            element = element.offsetParent;
         }
         element = originalElement;
         while (element && element !== element.ownerDocument.body) {

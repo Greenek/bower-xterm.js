@@ -60,6 +60,18 @@ var SearchHelper = (function () {
         var lowerTerm = term.toLowerCase();
         var searchIndex = lowerStringLine.indexOf(lowerTerm);
         if (searchIndex >= 0) {
+            var line = this._terminal.buffer.lines.get(y);
+            for (var i = 0; i < searchIndex; i++) {
+                var charData = line[i];
+                var char = charData[1];
+                if (char.length > 1) {
+                    searchIndex -= char.length - 1;
+                }
+                var charWidth = charData[2];
+                if (charWidth === 0) {
+                    searchIndex++;
+                }
+            }
             return {
                 term: term,
                 col: searchIndex,
