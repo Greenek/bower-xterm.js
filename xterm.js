@@ -134,7 +134,9 @@ var Buffer = (function () {
             return '';
         }
         var startIndex = startCol;
-        endCol = endCol || line.length;
+        if (endCol === null) {
+            endCol = line.length;
+        }
         var endIndex = endCol;
         for (var i = 0; i < line.length; i++) {
             var char = line[i];
@@ -205,7 +207,7 @@ exports.Buffer = Buffer;
 
 
 
-},{"./utils/CircularList":31}],2:[function(require,module,exports){
+},{"./utils/CircularList":32}],2:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -349,26 +351,33 @@ exports.wcwidth = (function (opts) {
         var min = 0;
         var max = data.length - 1;
         var mid;
-        if (ucs < data[0][0] || ucs > data[max][1])
+        if (ucs < data[0][0] || ucs > data[max][1]) {
             return false;
+        }
         while (max >= min) {
             mid = (min + max) >> 1;
-            if (ucs > data[mid][1])
+            if (ucs > data[mid][1]) {
                 min = mid + 1;
-            else if (ucs < data[mid][0])
+            }
+            else if (ucs < data[mid][0]) {
                 max = mid - 1;
-            else
+            }
+            else {
                 return true;
+            }
         }
         return false;
     }
     function wcwidthBMP(ucs) {
-        if (ucs === 0)
+        if (ucs === 0) {
             return opts.nul;
-        if (ucs < 32 || (ucs >= 0x7f && ucs < 0xa0))
+        }
+        if (ucs < 32 || (ucs >= 0x7f && ucs < 0xa0)) {
             return opts.control;
-        if (bisearch(ucs, COMBINING_BMP))
+        }
+        if (bisearch(ucs, COMBINING_BMP)) {
             return 0;
+        }
         if (isWideBMP(ucs)) {
             return 2;
         }
@@ -387,8 +396,9 @@ exports.wcwidth = (function (opts) {
             (ucs >= 0xffe0 && ucs <= 0xffe6)));
     }
     function wcwidthHigh(ucs) {
-        if (bisearch(ucs, COMBINING_HIGH))
+        if (bisearch(ucs, COMBINING_HIGH)) {
             return 0;
+        }
         if ((ucs >= 0x20000 && ucs <= 0x2fffd) || (ucs >= 0x30000 && ucs <= 0x3fffd)) {
             return 2;
         }
@@ -408,21 +418,25 @@ exports.wcwidth = (function (opts) {
         for (var i = 0; i < CONTAINERSIZE; ++i) {
             var num = 0;
             var pos = CODEPOINTS_PER_ITEM;
-            while (pos--)
+            while (pos--) {
                 num = (num << 2) | wcwidthBMP(CODEPOINTS_PER_ITEM * i + pos);
+            }
             table[i] = num;
         }
         return table;
     }
     return function (num) {
         num = num | 0;
-        if (num < 32)
+        if (num < 32) {
             return control | 0;
-        if (num < 127)
+        }
+        if (num < 127) {
             return 1;
+        }
         var t = table || init_table();
-        if (num < 65536)
+        if (num < 65536) {
             return t[num >> 4] >> ((num & 15) << 1) & 3;
+        }
         return wcwidthHigh(num);
     };
 })({ nul: 0, control: 0 });
@@ -862,8 +876,9 @@ var InputHandler = (function () {
                     }
                 }
                 else {
-                    if (chWidth === 2)
+                    if (chWidth === 2) {
                         return;
+                    }
                 }
             }
             row = this._terminal.buffer.y + this._terminal.buffer.ybase;
@@ -1630,7 +1645,7 @@ exports.InputHandler = InputHandler;
 
 
 
-},{"./Buffer":1,"./CharWidth":3,"./Charsets":4,"./EscapeSequences":6,"./renderer/Types":27}],9:[function(require,module,exports){
+},{"./Buffer":1,"./CharWidth":3,"./Charsets":4,"./EscapeSequences":6,"./renderer/Types":28}],9:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -1825,7 +1840,7 @@ exports.Linkifier = Linkifier;
 
 
 
-},{"./EventEmitter":7,"./Types":14,"./input/MouseZoneManager":17}],10:[function(require,module,exports){
+},{"./EventEmitter":7,"./Types":14,"./input/MouseZoneManager":18}],10:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var EscapeSequences_1 = require("./EscapeSequences");
@@ -2004,8 +2019,9 @@ var Parser = (function () {
                 code = ((code - 0xD800) * 0x400) + (low - 0xDC00) + 0x10000;
                 ch += data.charAt(this._position + 1);
             }
-            if (0xDC00 <= code && code <= 0xDFFF)
+            if (0xDC00 <= code && code <= 0xDFFF) {
                 continue;
+            }
             switch (this._state) {
                 case ParserState.NORMAL:
                     if (ch in normalStateHandler) {
@@ -2350,9 +2366,11 @@ var Browser = require("./shared/utils/Browser");
 var EventEmitter_1 = require("./EventEmitter");
 var SelectionModel_1 = require("./SelectionModel");
 var Buffer_1 = require("./Buffer");
+var AltClickHandler_1 = require("./handlers/AltClickHandler");
 var DRAG_SCROLL_MAX_THRESHOLD = 50;
 var DRAG_SCROLL_MAX_SPEED = 15;
 var DRAG_SCROLL_INTERVAL = 50;
+var ALT_CLICK_MOVE_CURSOR_TIME = 500;
 var WORD_SEPARATORS = ' ()[]{}\'"';
 var NON_BREAKING_SPACE_CHAR = String.fromCharCode(160);
 var ALL_NON_BREAKING_SPACE_REGEX = new RegExp(NON_BREAKING_SPACE_CHAR, 'g');
@@ -2482,6 +2500,25 @@ var SelectionManager = (function (_super) {
         this._refreshAnimationFrame = null;
         this.emit('refresh', { start: this._model.finalSelectionStart, end: this._model.finalSelectionEnd });
     };
+    SelectionManager.prototype.isClickInSelection = function (event) {
+        var coords = this._getMouseBufferCoords(event);
+        var start = this._model.finalSelectionStart;
+        var end = this._model.finalSelectionEnd;
+        if (!start || !end) {
+            return false;
+        }
+        return (coords[1] > start[1] && coords[1] < end[1]) ||
+            (start[1] === end[1] && coords[1] === start[1] && coords[0] > start[0] && coords[0] < end[0]) ||
+            (start[1] < end[1] && coords[1] === end[1] && coords[0] < end[0]);
+    };
+    SelectionManager.prototype.selectWordAtCursor = function (event) {
+        var coords = this._getMouseBufferCoords(event);
+        if (coords) {
+            this._selectWordAt(coords, false);
+            this._model.selectionEnd = null;
+            this.refresh(true);
+        }
+    };
     SelectionManager.prototype.selectAll = function () {
         this._model.isSelectAllActive = true;
         this.refresh();
@@ -2520,6 +2557,7 @@ var SelectionManager = (function (_super) {
         return Browser.isMac ? event.altKey : event.shiftKey;
     };
     SelectionManager.prototype.onMouseDown = function (event) {
+        this._mouseDownTimeStamp = event.timeStamp;
         if (event.button === 2 && this.hasSelection) {
             return;
         }
@@ -2593,7 +2631,7 @@ var SelectionManager = (function (_super) {
         var coords = this._getMouseBufferCoords(event);
         if (coords) {
             this._activeSelectionMode = SelectionMode.WORD;
-            this._selectWordAt(coords);
+            this._selectWordAt(coords, true);
         }
     };
     SelectionManager.prototype._onTripleClick = function (event) {
@@ -2654,9 +2692,14 @@ var SelectionManager = (function (_super) {
         }
     };
     SelectionManager.prototype._onMouseUp = function (event) {
+        var timeElapsed = event.timeStamp - this._mouseDownTimeStamp;
         this._removeMouseDownListeners();
-        if (this.hasSelection)
+        if (this.selectionText.length <= 1 && timeElapsed < ALT_CLICK_MOVE_CURSOR_TIME) {
+            (new AltClickHandler_1.AltClickHandler(event, this._terminal)).move();
+        }
+        else if (this.hasSelection) {
             this._terminal.emit('selection');
+        }
     };
     SelectionManager.prototype._onBufferActivate = function (e) {
         this.clearSelection();
@@ -2683,7 +2726,7 @@ var SelectionManager = (function (_super) {
         this._model.selectionStartLength = length;
         this.refresh();
     };
-    SelectionManager.prototype._getWordAt = function (coords) {
+    SelectionManager.prototype._getWordAt = function (coords, allowWhitespaceOnlySelection) {
         var bufferLine = this._buffer.lines.get(coords[1]);
         if (!bufferLine) {
             return null;
@@ -2757,17 +2800,20 @@ var SelectionManager = (function (_super) {
             + rightWideCharCount
             - leftLongCharOffset
             - rightLongCharOffset);
+        if (!allowWhitespaceOnlySelection && line.slice(startIndex, endIndex).trim() === '') {
+            return null;
+        }
         return { start: start, length: length };
     };
-    SelectionManager.prototype._selectWordAt = function (coords) {
-        var wordPosition = this._getWordAt(coords);
+    SelectionManager.prototype._selectWordAt = function (coords, allowWhitespaceOnlySelection) {
+        var wordPosition = this._getWordAt(coords, allowWhitespaceOnlySelection);
         if (wordPosition) {
             this._model.selectionStart = [wordPosition.start, coords[1]];
             this._model.selectionStartLength = wordPosition.length;
         }
     };
     SelectionManager.prototype._selectToWordAt = function (coords) {
-        var wordPosition = this._getWordAt(coords);
+        var wordPosition = this._getWordAt(coords, true);
         if (wordPosition) {
             this._model.selectionEnd = [this._model.areSelectionValuesReversed() ? wordPosition.start : (wordPosition.start + wordPosition.length), coords[1]];
         }
@@ -2788,7 +2834,7 @@ exports.SelectionManager = SelectionManager;
 
 
 
-},{"./Buffer":1,"./EventEmitter":7,"./SelectionModel":12,"./shared/utils/Browser":29,"./utils/MouseHelper":32}],12:[function(require,module,exports){
+},{"./Buffer":1,"./EventEmitter":7,"./SelectionModel":12,"./handlers/AltClickHandler":16,"./shared/utils/Browser":30,"./utils/MouseHelper":33}],12:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var SelectionModel = (function () {
@@ -2923,8 +2969,10 @@ var DEFAULT_OPTIONS = {
     cancelEvents: false,
     disableStdin: false,
     useFlowControl: false,
+    allowTransparency: false,
     tabStopWidth: 8,
-    theme: null
+    theme: null,
+    rightClickSelectsWord: Browser.isMac
 };
 var Terminal = (function (_super) {
     __extends(Terminal, _super);
@@ -3151,13 +3199,13 @@ var Terminal = (function (_super) {
         if (Browser.isFirefox) {
             on(this.element, 'mousedown', function (event) {
                 if (event.button === 2) {
-                    Clipboard_1.rightClickHandler(event, _this.textarea, _this.selectionManager);
+                    Clipboard_1.rightClickHandler(event, _this.textarea, _this.selectionManager, _this.options.rightClickSelectsWord);
                 }
             });
         }
         else {
             on(this.element, 'contextmenu', function (event) {
-                Clipboard_1.rightClickHandler(event, _this.textarea, _this.selectionManager);
+                Clipboard_1.rightClickHandler(event, _this.textarea, _this.selectionManager, _this.options.rightClickSelectsWord);
             });
         }
         if (Browser.isLinux) {
@@ -3874,27 +3922,30 @@ var Terminal = (function (_super) {
                 }
                 break;
             case 36:
-                if (modifiers)
+                if (modifiers) {
                     result.key = EscapeSequences_1.C0.ESC + '[1;' + (modifiers + 1) + 'H';
-                else if (this.applicationCursor)
+                }
+                else if (this.applicationCursor) {
                     result.key = EscapeSequences_1.C0.ESC + 'OH';
-                else
+                }
+                else {
                     result.key = EscapeSequences_1.C0.ESC + '[H';
+                }
                 break;
             case 35:
-                if (modifiers)
+                if (modifiers) {
                     result.key = EscapeSequences_1.C0.ESC + '[1;' + (modifiers + 1) + 'F';
-                else if (this.applicationCursor)
+                }
+                else if (this.applicationCursor) {
                     result.key = EscapeSequences_1.C0.ESC + 'OF';
-                else
+                }
+                else {
                     result.key = EscapeSequences_1.C0.ESC + '[F';
+                }
                 break;
             case 33:
                 if (ev.shiftKey) {
                     result.scrollLines = -(this.rows - 1);
-                }
-                else if (modifiers) {
-                    result.key = EscapeSequences_1.C0.ESC + '[5;' + (modifiers + 1) + '~';
                 }
                 else {
                     result.key = EscapeSequences_1.C0.ESC + '[5~';
@@ -3903,9 +3954,6 @@ var Terminal = (function (_super) {
             case 34:
                 if (ev.shiftKey) {
                     result.scrollLines = this.rows - 1;
-                }
-                else if (modifiers) {
-                    result.key = EscapeSequences_1.C0.ESC + '[6;' + (modifiers + 1) + '~';
                 }
                 else {
                     result.key = EscapeSequences_1.C0.ESC + '[6~';
@@ -4390,7 +4438,7 @@ function matchColor_(r1, g1, b1) {
 
 
 
-},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":16,"./input/MouseZoneManager":17,"./renderer/ColorManager":20,"./renderer/Renderer":24,"./shared/utils/Browser":29,"./utils/CharMeasure":30,"./utils/MouseHelper":32,"./utils/Sounds":34}],14:[function(require,module,exports){
+},{"./Buffer":1,"./BufferSet":2,"./CompositionHelper":5,"./EscapeSequences":6,"./EventEmitter":7,"./InputHandler":8,"./Linkifier":9,"./Parser":10,"./SelectionManager":11,"./Viewport":15,"./handlers/Clipboard":17,"./input/MouseZoneManager":18,"./renderer/ColorManager":21,"./renderer/Renderer":25,"./shared/utils/Browser":30,"./utils/CharMeasure":31,"./utils/MouseHelper":33,"./utils/Sounds":35}],14:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var LinkHoverEventTypes;
@@ -4494,6 +4542,154 @@ exports.Viewport = Viewport;
 },{}],16:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+var EscapeSequences_1 = require("../EscapeSequences");
+var Direction;
+(function (Direction) {
+    Direction["Up"] = "A";
+    Direction["Down"] = "B";
+    Direction["Right"] = "C";
+    Direction["Left"] = "D";
+})(Direction || (Direction = {}));
+var AltClickHandler = (function () {
+    function AltClickHandler(_mouseEvent, _terminal) {
+        this._mouseEvent = _mouseEvent;
+        this._terminal = _terminal;
+        this._lines = this._terminal.buffer.lines;
+        this._startCol = this._terminal.buffer.x;
+        this._startRow = this._terminal.buffer.y;
+        _a = this._terminal.mouseHelper.getCoords(this._mouseEvent, this._terminal.element, this._terminal.charMeasure, this._terminal.options.lineHeight, this._terminal.cols, this._terminal.rows, false).map(function (coordinate) {
+            return coordinate - 1;
+        }), this._endCol = _a[0], this._endRow = _a[1];
+        var _a;
+    }
+    AltClickHandler.prototype.move = function () {
+        if (this._mouseEvent.altKey) {
+            this._terminal.send(this._arrowSequences());
+        }
+    };
+    AltClickHandler.prototype._arrowSequences = function () {
+        return this._resetStartingRow() +
+            this._moveToRequestedRow() +
+            this._moveToRequestedCol();
+    };
+    AltClickHandler.prototype._resetStartingRow = function () {
+        var startRow = this._endRow - this._wrappedRowsForRow(this._endRow);
+        var endRow = this._endRow;
+        if (this._moveToRequestedRow().length === 0) {
+            return '';
+        }
+        else {
+            return repeat(this._bufferLine(this._startCol, this._startRow, this._startCol, this._startRow - this._wrappedRowsForRow(this._startRow), false).length, this._sequence(Direction.Left));
+        }
+    };
+    AltClickHandler.prototype._moveToRequestedRow = function () {
+        var startRow = this._startRow - this._wrappedRowsForRow(this._startRow);
+        var endRow = this._endRow - this._wrappedRowsForRow(this._endRow);
+        var rowsToMove = Math.abs(startRow - endRow) - this._wrappedRowsCount();
+        return repeat(rowsToMove, this._sequence(this._verticalDirection()));
+    };
+    AltClickHandler.prototype._moveToRequestedCol = function () {
+        var startRow;
+        if (this._moveToRequestedRow().length > 0) {
+            startRow = this._endRow - this._wrappedRowsForRow(this._endRow);
+        }
+        else {
+            startRow = this._startRow;
+        }
+        var endRow = this._endRow;
+        var direction = this._horizontalDirection();
+        return repeat(this._bufferLine(this._startCol, startRow, this._endCol, endRow, direction === Direction.Right).length, this._sequence(direction));
+    };
+    AltClickHandler.prototype._wrappedRowsCount = function () {
+        var wrappedRows = 0;
+        var startRow = this._startRow - this._wrappedRowsForRow(this._startRow);
+        var endRow = this._endRow - this._wrappedRowsForRow(this._endRow);
+        for (var i = 0; i < Math.abs(startRow - endRow); i++) {
+            var direction = this._verticalDirection() === Direction.Up ? -1 : 1;
+            if (this._lines.get(startRow + (direction * i)).isWrapped) {
+                wrappedRows++;
+            }
+        }
+        return wrappedRows;
+    };
+    AltClickHandler.prototype._wrappedRowsForRow = function (currentRow) {
+        var rowCount = 0;
+        var lineWraps = this._lines.get(currentRow).isWrapped;
+        while (lineWraps && currentRow >= 0 && currentRow < this._terminal.rows) {
+            rowCount++;
+            currentRow--;
+            lineWraps = this._lines.get(currentRow).isWrapped;
+        }
+        return rowCount;
+    };
+    AltClickHandler.prototype._horizontalDirection = function () {
+        var startRow;
+        if (this._moveToRequestedRow().length > 0) {
+            startRow = this._endRow - this._wrappedRowsForRow(this._endRow);
+        }
+        else {
+            startRow = this._startRow;
+        }
+        if ((this._startCol < this._endCol &&
+            startRow <= this._endRow) ||
+            (this._startCol >= this._endCol &&
+                startRow < this._endRow)) {
+            return Direction.Right;
+        }
+        else {
+            return Direction.Left;
+        }
+    };
+    AltClickHandler.prototype._verticalDirection = function () {
+        if (this._startRow > this._endRow) {
+            return Direction.Up;
+        }
+        else {
+            return Direction.Down;
+        }
+    };
+    AltClickHandler.prototype._bufferLine = function (startCol, startRow, endCol, endRow, forward) {
+        var currentCol = startCol;
+        var currentRow = startRow;
+        var bufferStr = '';
+        while (currentCol !== endCol || currentRow !== endRow) {
+            currentCol += forward ? 1 : -1;
+            if (forward && currentCol > this._terminal.cols - 1) {
+                bufferStr += this._terminal.buffer.translateBufferLineToString(currentRow, false, startCol, currentCol);
+                currentCol = 0;
+                startCol = 0;
+                currentRow++;
+            }
+            else if (!forward && currentCol < 0) {
+                bufferStr += this._terminal.buffer.translateBufferLineToString(currentRow, false, 0, startCol + 1);
+                currentCol = this._terminal.cols - 1;
+                startCol = currentCol;
+                currentRow--;
+            }
+        }
+        return bufferStr + this._terminal.buffer.translateBufferLineToString(currentRow, false, startCol, currentCol);
+    };
+    AltClickHandler.prototype._sequence = function (direction) {
+        var mod = this._terminal.applicationCursor ? 'O' : '[';
+        return EscapeSequences_1.C0.ESC + mod + direction;
+    };
+    return AltClickHandler;
+}());
+exports.AltClickHandler = AltClickHandler;
+function repeat(count, str) {
+    count = Math.floor(count);
+    var rpt = '';
+    for (var i = 0; i < count; i++) {
+        rpt += str;
+    }
+    return rpt;
+}
+
+
+
+},{"../EscapeSequences":6}],17:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 function prepareTextForTerminal(text, isMSWindows) {
     if (isMSWindows) {
         return text.replace(/\r?\n/g, '\r');
@@ -4558,11 +4754,14 @@ function moveTextAreaUnderMouseCursor(ev, textarea) {
         textarea.style.left = null;
         textarea.style.top = null;
         textarea.style.zIndex = null;
-    }, 4);
+    }, 200);
 }
 exports.moveTextAreaUnderMouseCursor = moveTextAreaUnderMouseCursor;
-function rightClickHandler(ev, textarea, selectionManager) {
+function rightClickHandler(ev, textarea, selectionManager, shouldSelectWord) {
     moveTextAreaUnderMouseCursor(ev, textarea);
+    if (shouldSelectWord && !selectionManager.isClickInSelection(ev)) {
+        selectionManager.selectWordAtCursor(ev);
+    }
     textarea.value = selectionManager.selectionText;
     textarea.select();
 }
@@ -4570,7 +4769,7 @@ exports.rightClickHandler = rightClickHandler;
 
 
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var HOVER_DURATION = 500;
@@ -4714,7 +4913,7 @@ exports.MouseZone = MouseZone;
 
 
 
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var CharAtlas_1 = require("./CharAtlas");
@@ -4722,7 +4921,8 @@ var Buffer_1 = require("../Buffer");
 exports.INVERTED_DEFAULT_COLOR = -1;
 var DIM_OPACITY = 0.5;
 var BaseRenderLayer = (function () {
-    function BaseRenderLayer(container, id, zIndex, _alpha, _colors) {
+    function BaseRenderLayer(_container, id, zIndex, _alpha, _colors) {
+        this._container = _container;
         this._alpha = _alpha;
         this._colors = _colors;
         this._scaledCharWidth = 0;
@@ -4732,15 +4932,17 @@ var BaseRenderLayer = (function () {
         this._scaledCharLeft = 0;
         this._scaledCharTop = 0;
         this._canvas = document.createElement('canvas');
-        this._canvas.id = "xterm-" + id + "-layer";
+        this._canvas.classList.add("xterm-" + id + "-layer");
         this._canvas.style.zIndex = zIndex.toString();
-        this._ctx = this._canvas.getContext('2d', { alpha: _alpha });
-        this._ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-        if (!_alpha) {
+        this._initCanvas();
+        this._container.appendChild(this._canvas);
+    }
+    BaseRenderLayer.prototype._initCanvas = function () {
+        this._ctx = this._canvas.getContext('2d', { alpha: this._alpha });
+        if (!this._alpha) {
             this.clearAll();
         }
-        container.appendChild(this._canvas);
-    }
+    };
     BaseRenderLayer.prototype.onOptionsChanged = function (terminal) { };
     BaseRenderLayer.prototype.onBlur = function (terminal) { };
     BaseRenderLayer.prototype.onFocus = function (terminal) { };
@@ -4750,13 +4952,25 @@ var BaseRenderLayer = (function () {
     BaseRenderLayer.prototype.onThemeChanged = function (terminal, colorSet) {
         this._refreshCharAtlas(terminal, colorSet);
     };
+    BaseRenderLayer.prototype.setTransparency = function (terminal, alpha) {
+        if (alpha === this._alpha) {
+            return;
+        }
+        var oldCanvas = this._canvas;
+        this._alpha = alpha;
+        this._canvas = this._canvas.cloneNode();
+        this._initCanvas();
+        this._container.replaceChild(this._canvas, oldCanvas);
+        this._refreshCharAtlas(terminal, this._colors);
+        this.onGridChanged(terminal, 0, terminal.rows - 1);
+    };
     BaseRenderLayer.prototype._refreshCharAtlas = function (terminal, colorSet) {
         var _this = this;
         if (this._scaledCharWidth <= 0 && this._scaledCharHeight <= 0) {
             return;
         }
         this._charAtlas = null;
-        var result = CharAtlas_1.acquireCharAtlas(terminal, this._colors, this._scaledCharWidth, this._scaledCharHeight);
+        var result = CharAtlas_1.acquireCharAtlas(terminal, colorSet, this._scaledCharWidth, this._scaledCharHeight);
         if (result instanceof HTMLCanvasElement) {
             this._charAtlas = result;
         }
@@ -4886,7 +5100,7 @@ exports.BaseRenderLayer = BaseRenderLayer;
 
 
 
-},{"../Buffer":1,"./CharAtlas":19}],19:[function(require,module,exports){
+},{"../Buffer":1,"./CharAtlas":20}],20:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var CharAtlasGenerator_1 = require("../shared/CharAtlasGenerator");
@@ -4935,7 +5149,8 @@ function acquireCharAtlas(terminal, colors, scaledCharWidth, scaledCharHeight) {
         background: colors.background,
         foreground: colors.foreground,
         ansiColors: colors.ansi,
-        devicePixelRatio: window.devicePixelRatio
+        devicePixelRatio: window.devicePixelRatio,
+        allowTransparency: terminal.options.allowTransparency
     };
     var newEntry = {
         bitmap: CharAtlasGenerator_1.generateCharAtlas(window, canvasFactory, charAtlasConfig),
@@ -4962,6 +5177,7 @@ function generateConfig(scaledCharWidth, scaledCharHeight, terminal, colors) {
         fontSize: terminal.options.fontSize,
         fontWeight: terminal.options.fontWeight,
         fontWeightBold: terminal.options.fontWeightBold,
+        allowTransparency: terminal.options.allowTransparency,
         colors: clonedColors
     };
 }
@@ -4975,6 +5191,7 @@ function configEquals(a, b) {
         a.fontSize === b.fontSize &&
         a.fontWeight === b.fontWeight &&
         a.fontWeightBold === b.fontWeightBold &&
+        a.allowTransparency === b.allowTransparency &&
         a.scaledCharWidth === b.scaledCharWidth &&
         a.scaledCharHeight === b.scaledCharHeight &&
         a.colors.foreground === b.colors.foreground &&
@@ -4983,7 +5200,7 @@ function configEquals(a, b) {
 
 
 
-},{"../shared/CharAtlasGenerator":28}],20:[function(require,module,exports){
+},{"../shared/CharAtlasGenerator":29}],21:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var DEFAULT_FOREGROUND = '#ffffff';
@@ -5041,7 +5258,7 @@ var ColorManager = (function () {
     }
     ColorManager.prototype.setTheme = function (theme) {
         this.colors.foreground = theme.foreground || DEFAULT_FOREGROUND;
-        this.colors.background = this._validateColor(theme.background, DEFAULT_BACKGROUND);
+        this.colors.background = theme.background || DEFAULT_BACKGROUND;
         this.colors.cursor = theme.cursor || DEFAULT_CURSOR;
         this.colors.cursorAccent = theme.cursorAccent || DEFAULT_CURSOR_ACCENT;
         this.colors.selection = theme.selection || DEFAULT_SELECTION;
@@ -5062,28 +5279,13 @@ var ColorManager = (function () {
         this.colors.ansi[14] = theme.brightCyan || exports.DEFAULT_ANSI_COLORS[14];
         this.colors.ansi[15] = theme.brightWhite || exports.DEFAULT_ANSI_COLORS[15];
     };
-    ColorManager.prototype._validateColor = function (color, fallback) {
-        if (!color) {
-            return fallback;
-        }
-        if (color.length === 7 && color.charAt(0) === '#') {
-            return color;
-        }
-        if (color.length === 4 && color.charAt(0) === '#') {
-            var r = color.charAt(1);
-            var g = color.charAt(2);
-            var b = color.charAt(3);
-            return "#" + r + r + g + g + b + b;
-        }
-        return fallback;
-    };
     return ColorManager;
 }());
 exports.ColorManager = ColorManager;
 
 
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5372,7 +5574,7 @@ var CursorBlinkStateManager = (function () {
 
 
 
-},{"../Buffer":1,"./BaseRenderLayer":18}],22:[function(require,module,exports){
+},{"../Buffer":1,"./BaseRenderLayer":19}],23:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var GridCache = (function () {
@@ -5404,7 +5606,7 @@ exports.GridCache = GridCache;
 
 
 
-},{}],23:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5455,7 +5657,7 @@ exports.LinkRenderLayer = LinkRenderLayer;
 
 
 
-},{"../Types":14,"./BaseRenderLayer":18}],24:[function(require,module,exports){
+},{"../Types":14,"./BaseRenderLayer":19}],25:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5489,7 +5691,7 @@ var Renderer = (function (_super) {
             _this.colorManager.setTheme(theme);
         }
         _this._renderLayers = [
-            new TextRenderLayer_1.TextRenderLayer(_this._terminal.element, 0, _this.colorManager.colors),
+            new TextRenderLayer_1.TextRenderLayer(_this._terminal.element, 0, _this.colorManager.colors, _this._terminal.options.allowTransparency),
             new SelectionRenderLayer_1.SelectionRenderLayer(_this._terminal.element, 1, _this.colorManager.colors),
             new LinkRenderLayer_1.LinkRenderLayer(_this._terminal.element, 2, _this.colorManager.colors, _this._terminal),
             new CursorRenderLayer_1.CursorRenderLayer(_this._terminal.element, 3, _this.colorManager.colors)
@@ -5656,7 +5858,7 @@ exports.Renderer = Renderer;
 
 
 
-},{"../EventEmitter":7,"../utils/ScreenDprMonitor":33,"./ColorManager":20,"./CursorRenderLayer":21,"./LinkRenderLayer":23,"./SelectionRenderLayer":25,"./TextRenderLayer":26}],25:[function(require,module,exports){
+},{"../EventEmitter":7,"../utils/ScreenDprMonitor":34,"./ColorManager":21,"./CursorRenderLayer":22,"./LinkRenderLayer":24,"./SelectionRenderLayer":26,"./TextRenderLayer":27}],26:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5730,7 +5932,7 @@ exports.SelectionRenderLayer = SelectionRenderLayer;
 
 
 
-},{"./BaseRenderLayer":18}],26:[function(require,module,exports){
+},{"./BaseRenderLayer":19}],27:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -5750,8 +5952,8 @@ var BaseRenderLayer_1 = require("./BaseRenderLayer");
 var OVERLAP_OWNED_CHAR_DATA = [null, '', 0, -1];
 var TextRenderLayer = (function (_super) {
     __extends(TextRenderLayer, _super);
-    function TextRenderLayer(container, zIndex, colors) {
-        var _this = _super.call(this, container, 'text', zIndex, false, colors) || this;
+    function TextRenderLayer(container, zIndex, colors, alpha) {
+        var _this = _super.call(this, container, 'text', zIndex, alpha, colors) || this;
         _this._characterOverlapCache = {};
         _this._state = new GridCache_1.GridCache();
         return _this;
@@ -5853,6 +6055,9 @@ var TextRenderLayer = (function (_super) {
             }
         }
     };
+    TextRenderLayer.prototype.onOptionsChanged = function (terminal) {
+        this.setTransparency(terminal, terminal.options.allowTransparency);
+    };
     TextRenderLayer.prototype._isOverlapping = function (charData) {
         if (charData[Buffer_1.CHAR_DATA_WIDTH_INDEX] !== 1) {
             return false;
@@ -5886,7 +6091,7 @@ exports.TextRenderLayer = TextRenderLayer;
 
 
 
-},{"../Buffer":1,"./BaseRenderLayer":18,"./GridCache":22,"./Types":27}],27:[function(require,module,exports){
+},{"../Buffer":1,"./BaseRenderLayer":19,"./GridCache":23,"./Types":28}],28:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var FLAGS;
@@ -5901,7 +6106,7 @@ var FLAGS;
 
 
 
-},{}],28:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Browser_1 = require("./utils/Browser");
@@ -5910,7 +6115,7 @@ function generateCharAtlas(context, canvasFactory, request) {
     var cellWidth = request.scaledCharWidth + exports.CHAR_ATLAS_CELL_SPACING;
     var cellHeight = request.scaledCharHeight + exports.CHAR_ATLAS_CELL_SPACING;
     var canvas = canvasFactory(255 * cellWidth, (2 + 16) * cellHeight);
-    var ctx = canvas.getContext('2d', { alpha: false });
+    var ctx = canvas.getContext('2d', { alpha: request.allowTransparency });
     ctx.fillStyle = request.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -5984,7 +6189,7 @@ function getFont(fontWeight, request) {
 
 
 
-},{"./utils/Browser":29}],29:[function(require,module,exports){
+},{"./utils/Browser":30}],30:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var isNode = (typeof navigator === 'undefined') ? true : false;
@@ -6003,7 +6208,7 @@ function contains(arr, el) {
 
 
 
-},{}],30:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6066,7 +6271,7 @@ exports.CharMeasure = CharMeasure;
 
 
 
-},{"../EventEmitter":7}],31:[function(require,module,exports){
+},{"../EventEmitter":7}],32:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6236,7 +6441,7 @@ exports.CircularList = CircularList;
 
 
 
-},{"../EventEmitter":7}],32:[function(require,module,exports){
+},{"../EventEmitter":7}],33:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var MouseHelper = (function () {
@@ -6291,7 +6496,7 @@ exports.MouseHelper = MouseHelper;
 
 
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var ScreenDprMonitor = (function () {
@@ -6331,14 +6536,14 @@ exports.ScreenDprMonitor = ScreenDprMonitor;
 
 
 
-},{}],34:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BELL_SOUND = 'data:audio/wav;base64,UklGRigBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQBAADpAFgCwAMlBZoG/wdmCcoKRAypDQ8PbRDBEQQTOxRtFYcWlBePGIUZXhoiG88bcBz7HHIdzh0WHlMeZx51HmkeUx4WHs8dah0AHXwc3hs9G4saxRnyGBIYGBcQFv8U4RPAEoYRQBACD70NWwwHC6gJOwjWBloF7gOBAhABkf8b/qv8R/ve+Xf4Ife79W/0JfPZ8Z/wde9N7ijtE+wU6xvqM+lb6H7nw+YX5mrlxuQz5Mzje+Ma49fioeKD4nXiYeJy4pHitOL04j/jn+MN5IPkFOWs5U3mDefM55/ogOl36m7rdOyE7abuyu8D8Unyj/Pg9D/2qfcb+Yn6/vuK/Qj/lAAlAg==';
 
 
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var Terminal_1 = require("./Terminal");
@@ -6346,6 +6551,6 @@ module.exports = Terminal_1.Terminal;
 
 
 
-},{"./Terminal":13}]},{},[35])(35)
+},{"./Terminal":13}]},{},[36])(36)
 });
 //# sourceMappingURL=xterm.js.map
