@@ -1743,6 +1743,7 @@ var Linkifier = (function (_super) {
             validationCallback: options.validationCallback,
             hoverTooltipCallback: options.tooltipCallback,
             hoverLeaveCallback: options.leaveCallback,
+            willLinkActivate: options.willLinkActivate,
             priority: options.priority || 0
         };
         this._addLinkMatcherToList(matcher);
@@ -1831,6 +1832,11 @@ var Linkifier = (function (_super) {
             if (matcher.hoverLeaveCallback) {
                 matcher.hoverLeaveCallback();
             }
+        }, function (e) {
+            if (matcher.willLinkActivate) {
+                return matcher.willLinkActivate(e, uri);
+            }
+            return true;
         }));
     };
     Linkifier.TIME_BEFORE_LINKIFY = 200;
@@ -2531,7 +2537,7 @@ var SelectionManager = (function (_super) {
         }
     };
     SelectionManager.prototype._getMouseBufferCoords = function (event) {
-        var coords = this._terminal.mouseHelper.getCoords(event, this._terminal.element, this._charMeasure, this._terminal.options.lineHeight, this._terminal.cols, this._terminal.rows, true);
+        var coords = this._terminal.mouseHelper.getCoords(event, this._terminal.screenElement, this._charMeasure, this._terminal.options.lineHeight, this._terminal.cols, this._terminal.rows, true);
         if (!coords) {
             return null;
         }
@@ -2541,7 +2547,7 @@ var SelectionManager = (function (_super) {
         return coords;
     };
     SelectionManager.prototype._getMouseEventScrollAmount = function (event) {
-        var offset = MouseHelper_1.MouseHelper.getCoordsRelativeToElement(event, this._terminal.element)[1];
+        var offset = MouseHelper_1.MouseHelper.getCoordsRelativeToElement(event, this._terminal.screenElement)[1];
         var terminalHeight = this._terminal.rows * Math.ceil(this._charMeasure.height * this._terminal.options.lineHeight);
         if (offset >= 0 && offset <= terminalHeight) {
             return 0;
@@ -3272,12 +3278,15 @@ var Terminal = (function (_super) {
         this.viewportScrollArea = document.createElement('div');
         this.viewportScrollArea.classList.add('xterm-scroll-area');
         this.viewportElement.appendChild(this.viewportScrollArea);
+        this.screenElement = document.createElement('div');
+        this.screenElement.classList.add('xterm-screen');
+        this.helperContainer = document.createElement('div');
+        this.helperContainer.classList.add('xterm-helpers');
+        this.screenElement.appendChild(this.helperContainer);
+        fragment.appendChild(this.screenElement);
         this._mouseZoneManager = new MouseZoneManager_1.MouseZoneManager(this);
         this.on('scroll', function () { return _this._mouseZoneManager.clearAll(); });
         this.linkifier.attachToDom(this._mouseZoneManager);
-        this.helperContainer = document.createElement('div');
-        this.helperContainer.classList.add('xterm-helpers');
-        fragment.appendChild(this.helperContainer);
         this.textarea = document.createElement('textarea');
         this.textarea.classList.add('xterm-helper-textarea');
         this.textarea.setAttribute('autocorrect', 'off');
@@ -3343,7 +3352,7 @@ var Terminal = (function (_super) {
             var button;
             var pos;
             button = getButton(ev);
-            pos = self.mouseHelper.getRawByteCoords(ev, self.element, self.charMeasure, self.options.lineHeight, self.cols, self.rows);
+            pos = self.mouseHelper.getRawByteCoords(ev, self.screenElement, self.charMeasure, self.options.lineHeight, self.cols, self.rows);
             if (!pos)
                 return;
             sendEvent(button, pos);
@@ -3360,7 +3369,7 @@ var Terminal = (function (_super) {
         }
         function sendMove(ev) {
             var button = pressed;
-            var pos = self.mouseHelper.getRawByteCoords(ev, self.element, self.charMeasure, self.options.lineHeight, self.cols, self.rows);
+            var pos = self.mouseHelper.getRawByteCoords(ev, self.screenElement, self.charMeasure, self.options.lineHeight, self.cols, self.rows);
             if (!pos)
                 return;
             button += 32;
@@ -4453,6 +4462,7 @@ var LinkHoverEventTypes;
 },{}],15:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+var FALLBACK_SCROLL_BAR_WIDTH = 15;
 var Viewport = (function () {
     function Viewport(terminal, viewportElement, scrollArea, charMeasure) {
         var _this = this;
@@ -4460,10 +4470,12 @@ var Viewport = (function () {
         this.viewportElement = viewportElement;
         this.scrollArea = scrollArea;
         this.charMeasure = charMeasure;
+        this.scrollBarWidth = 0;
         this.currentRowHeight = 0;
         this.lastRecordedBufferLength = 0;
         this.lastRecordedViewportHeight = 0;
         this.lastRecordedBufferHeight = 0;
+        this.scrollBarWidth = (this.viewportElement.offsetWidth - this.scrollArea.offsetWidth) || FALLBACK_SCROLL_BAR_WIDTH;
         this.viewportElement.addEventListener('scroll', this.onScroll.bind(this));
         setTimeout(function () { return _this.syncScrollArea(); }, 0);
     }
@@ -4473,11 +4485,8 @@ var Viewport = (function () {
     Viewport.prototype.refresh = function () {
         if (this.charMeasure.height > 0) {
             this.currentRowHeight = this.terminal.renderer.dimensions.scaledCellHeight / window.devicePixelRatio;
-            if (this.lastRecordedViewportHeight !== this.terminal.renderer.dimensions.canvasHeight) {
-                this.lastRecordedViewportHeight = this.terminal.renderer.dimensions.canvasHeight;
-                this.viewportElement.style.height = this.lastRecordedViewportHeight + 'px';
-            }
-            var newBufferHeight = Math.round(this.currentRowHeight * this.lastRecordedBufferLength);
+            this.lastRecordedViewportHeight = this.viewportElement.offsetHeight;
+            var newBufferHeight = Math.round(this.currentRowHeight * this.lastRecordedBufferLength) + (this.lastRecordedViewportHeight - this.terminal.renderer.dimensions.canvasHeight);
             if (this.lastRecordedBufferHeight !== newBufferHeight) {
                 this.lastRecordedBufferHeight = newBufferHeight;
                 this.scrollArea.style.height = this.lastRecordedBufferHeight + 'px';
@@ -4503,6 +4512,9 @@ var Viewport = (function () {
         }
     };
     Viewport.prototype.onScroll = function (ev) {
+        if (!this.viewportElement.offsetParent) {
+            return;
+        }
         var newRow = Math.round(this.viewportElement.scrollTop / this.currentRowHeight);
         var diff = newRow - this.terminal.buffer.ydisp;
         this.terminal.scrollLines(diff, true);
@@ -4869,8 +4881,10 @@ var MouseZoneManager = (function () {
         }
         var zone = this._findZoneEventAt(e);
         if (zone) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
+            if (zone.willLinkActivate(e)) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
         }
     };
     MouseZoneManager.prototype._onClick = function (e) {
@@ -4882,7 +4896,7 @@ var MouseZoneManager = (function () {
         }
     };
     MouseZoneManager.prototype._findZoneEventAt = function (e) {
-        var coords = this._terminal.mouseHelper.getCoords(e, this._terminal.element, this._terminal.charMeasure, this._terminal.options.lineHeight, this._terminal.cols, this._terminal.rows);
+        var coords = this._terminal.mouseHelper.getCoords(e, this._terminal.screenElement, this._terminal.charMeasure, this._terminal.options.lineHeight, this._terminal.cols, this._terminal.rows);
         if (!coords) {
             return null;
         }
@@ -4898,7 +4912,7 @@ var MouseZoneManager = (function () {
 }());
 exports.MouseZoneManager = MouseZoneManager;
 var MouseZone = (function () {
-    function MouseZone(x1, x2, y, clickCallback, hoverCallback, tooltipCallback, leaveCallback) {
+    function MouseZone(x1, x2, y, clickCallback, hoverCallback, tooltipCallback, leaveCallback, willLinkActivate) {
         this.x1 = x1;
         this.x2 = x2;
         this.y = y;
@@ -4906,6 +4920,7 @@ var MouseZone = (function () {
         this.hoverCallback = hoverCallback;
         this.tooltipCallback = tooltipCallback;
         this.leaveCallback = leaveCallback;
+        this.willLinkActivate = willLinkActivate;
     }
     return MouseZone;
 }());
@@ -5691,10 +5706,10 @@ var Renderer = (function (_super) {
             _this.colorManager.setTheme(theme);
         }
         _this._renderLayers = [
-            new TextRenderLayer_1.TextRenderLayer(_this._terminal.element, 0, _this.colorManager.colors, _this._terminal.options.allowTransparency),
-            new SelectionRenderLayer_1.SelectionRenderLayer(_this._terminal.element, 1, _this.colorManager.colors),
-            new LinkRenderLayer_1.LinkRenderLayer(_this._terminal.element, 2, _this.colorManager.colors, _this._terminal),
-            new CursorRenderLayer_1.CursorRenderLayer(_this._terminal.element, 3, _this.colorManager.colors)
+            new TextRenderLayer_1.TextRenderLayer(_this._terminal.screenElement, 0, _this.colorManager.colors, _this._terminal.options.allowTransparency),
+            new SelectionRenderLayer_1.SelectionRenderLayer(_this._terminal.screenElement, 1, _this.colorManager.colors),
+            new LinkRenderLayer_1.LinkRenderLayer(_this._terminal.screenElement, 2, _this.colorManager.colors, _this._terminal),
+            new CursorRenderLayer_1.CursorRenderLayer(_this._terminal.screenElement, 3, _this.colorManager.colors)
         ];
         _this.dimensions = {
             scaledCharWidth: null,
@@ -5758,6 +5773,8 @@ var Renderer = (function (_super) {
         else {
             this._terminal.refresh(0, this._terminal.rows - 1);
         }
+        this._terminal.screenElement.style.width = this.dimensions.canvasWidth + this._terminal.viewport.scrollBarWidth + "px";
+        this._terminal.screenElement.style.height = this.dimensions.canvasHeight + "px";
         this.emit('resize', {
             width: this.dimensions.canvasWidth,
             height: this.dimensions.canvasHeight
